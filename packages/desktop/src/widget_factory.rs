@@ -1,3 +1,4 @@
+use gtk::prelude::GtkWindowExt;
 use std::{
   collections::HashMap,
   path::PathBuf,
@@ -18,6 +19,8 @@ use tokio::{
   task,
 };
 use tracing::{error, info};
+use gdk::WindowTypeHint::Dock;
+use gtk_layer_shell::{Edge, Layer, LayerShell};
 
 #[cfg(target_os = "macos")]
 use crate::common::macos::WindowExtMacOs;
@@ -106,6 +109,7 @@ pub enum WidgetOpenOptions {
   Preset(String),
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
 struct WidgetCoordinates {
   size: PhysicalSize<i32>,
   position: PhysicalPosition<i32>,
@@ -216,6 +220,7 @@ impl WidgetFactory {
     open_options: &WidgetOpenOptions,
     is_preview: bool,
   ) -> anyhow::Result<()> {
+
     let widget_config = widget_pack
       .config
       .widgets
@@ -368,6 +373,29 @@ impl WidgetFactory {
         let _ = window.set_size(size.to_logical::<f64>(scale_factor));
         let _ =
           window.set_position(position.to_logical::<f64>(scale_factor));
+      }
+
+      if (placement.dock_to_edge.enabled) {
+        info!("doing dock to edge stuff, {:?}", placement.dock_to_edge);
+        // set the appropriate window hints
+        let gtk_window = window.gtk_window().unwrap();
+        window.set_focusable(false);
+        gtk_window.set_type_hint(Dock);
+        gtk_window.init_layer_shell();
+        match widget_config.z_order {
+          ZOrder::TopMost => gtk_window.set_layer(Layer::Top),
+          ZOrder::BottomMost => gtk_window.set_layer(Layer::Bottom),
+          ZOrder::Normal => (),
+        }
+        gtk_window.set_anchor(
+          match placement.dock_to_edge.edge.unwrap() {
+            DockEdge::Top => Edge::Top,
+            DockEdge::Right => Edge::Right,
+            DockEdge::Bottom => Edge::Bottom,
+            DockEdge::Left => Edge::Left,
+          },
+          true,
+        );
       }
 
       // On Windows, Tauri's `skip_taskbar` option isn't 100% reliable,
