@@ -10,8 +10,7 @@ use tauri::{
   image::Image,
   menu::{CheckMenuItem, Menu, MenuBuilder, Submenu, SubmenuBuilder},
   tray::{
-    MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder,
-    TrayIconEvent,
+    TrayIcon, TrayIconBuilder,
   },
   AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry,
 };
@@ -252,7 +251,7 @@ impl SysTray {
   }
 
   /// Returns the image to use for the system tray icon.
-  fn icon_image(&self) -> anyhow::Result<Image> {
+  fn icon_image(&self) -> anyhow::Result<Image<'_>> {
     self
       .app_handle
       .default_window_icon()

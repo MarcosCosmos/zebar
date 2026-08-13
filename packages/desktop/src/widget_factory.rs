@@ -300,7 +300,7 @@ impl WidgetFactory {
         .await?,
       );
 
-      let mut state = WidgetState {
+      let state = WidgetState {
         id: widget_id.clone(),
         name: widget_name.to_string(),
         pack_id: widget_pack.id.clone(),
@@ -405,7 +405,7 @@ impl WidgetFactory {
   fn set_z_order(
     window: &tauri::WebviewWindow,
     z_order: &ZOrder,
-    placement: &WidgetPlacement,
+    _placement: &WidgetPlacement,
   ) -> anyhow::Result<()> {
     // On macOS, the window level must be set above the menu bar or at the
     // bottom-most level to prevent it from being shifted down beneath the
@@ -455,8 +455,8 @@ impl WidgetFactory {
   /// Returns the new window size and position.
   fn dock_to_edge(
     &self,
-    window: &tauri::WebviewWindow,
-    dock_config: &DockConfig,
+    _window: &tauri::WebviewWindow,
+    _dock_config: &DockConfig,
     coords: &WidgetCoordinates,
   ) -> anyhow::Result<(PhysicalSize<i32>, PhysicalPosition<i32>)> {
     #[cfg(not(target_os = "windows"))]
@@ -624,7 +624,7 @@ impl WidgetFactory {
           let mut widget_states = widget_states.lock().await;
 
           // Remove the widget state.
-          let state = widget_states.remove(&widget_id);
+          let _state = widget_states.remove(&widget_id);
 
           // Ensure appbar space is deallocated on close.
           #[cfg(target_os = "windows")]
@@ -812,7 +812,7 @@ impl WidgetFactory {
       widget_ids
         .iter()
         .filter_map(|id| widget_states.remove(id))
-        .inspect(|widget_state| {
+        .inspect(|_widget_state| {
           // Need to clean up any appbars prior to restarting.
           #[cfg(target_os = "windows")]
           {

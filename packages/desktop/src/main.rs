@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     ])
     .build(tauri::generate_context!())?;
 
-  app.run(|app, event| {
+  app.run(|_app, event| {
     if let RunEvent::ExitRequested { .. } = &event {
       // Deallocate any appbars on Windows.
       #[cfg(target_os = "windows")]
