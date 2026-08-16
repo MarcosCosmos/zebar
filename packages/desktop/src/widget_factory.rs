@@ -16,7 +16,11 @@ use gtk::{
 use gtk_layer_shell::{Edge, Layer, LayerShell};
 use serde::Serialize;
 use tao::platform::unix::{WindowBuilderExtUnix, WindowExtUnix};
-use tauri::{self, ipc::RuntimeCapability, AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry};
+use tauri::{
+  self, ipc::RuntimeCapability, AppHandle, Manager, PhysicalPosition,
+  PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+  WindowEvent, Wry,
+};
 use tokio::{
   sync::{broadcast, Mutex},
   task,
