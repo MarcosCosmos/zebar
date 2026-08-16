@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "scripts": {
     "build": "pnpm tauri build -- --verbose",
-    "dev": "pnpm tauri dev",
+    "dev": "RUST_BACKTRACE=1 pnpm tauri dev",
     "dev:local": "pnpm dev",
     "format": "cargo fmt",
     "lint": "cargo fmt --check",
@@ -11,7 +11,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@tauri-apps/cli": "2.0.3",
+    "@tauri-apps/cli": "2.11.4",
     "typescript": "5.3.3"
   }
 }

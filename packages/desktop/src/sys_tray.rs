@@ -9,9 +9,7 @@ use anyhow::{bail, Context};
 use tauri::{
   image::Image,
   menu::{CheckMenuItem, Menu, MenuBuilder, Submenu, SubmenuBuilder},
-  tray::{
-    TrayIcon, TrayIconBuilder,
-  },
+  tray::{TrayIcon, TrayIconBuilder},
   AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry,
 };
 use tokio::task;

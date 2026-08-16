@@ -41,7 +41,6 @@ impl CpuProvider {
     let mut sysinfo = self.common.sysinfo.blocking_lock();
     sysinfo.refresh_cpu();
 
-
     Ok(CpuOutput {
       usage: sysinfo.global_cpu_info().cpu_usage(),
       frequency: sysinfo.global_cpu_info().frequency(),

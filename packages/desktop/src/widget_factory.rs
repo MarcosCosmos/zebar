@@ -1,3 +1,4 @@
+use gtk::prelude::WidgetExt;
 use std::{
   collections::HashMap,
   path::PathBuf,
@@ -29,15 +30,6 @@ use tracing::{error, info};
 use crate::common::macos::WindowExtMacOs;
 #[cfg(target_os = "windows")]
 use crate::common::windows::{remove_app_bar, WindowExtWindows};
-
-#[cfg(any(
-  target_os = "linux",
-  target_os = "dragonfly",
-  target_os = "freebsd",
-  target_os = "netbsd",
-  target_os = "openbsd"
-))]
-use crate::common::linux::WindowExtLinux;
 use crate::{
   app_settings::AppSettings,
   asset_server::create_init_url,
@@ -122,7 +114,7 @@ pub enum WidgetOpenOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-struct WidgetCoordinates {
+pub struct WidgetCoordinates {
   size: PhysicalSize<i32>,
   position: PhysicalPosition<i32>,
   offset: PhysicalPosition<i32>,
@@ -275,13 +267,17 @@ impl WidgetFactory {
     &self,
     widget_pack: &WidgetPack,
     state: &WidgetState,
-    placement: &WidgetPlacement
+    placement: &WidgetPlacement,
+    coordinates: &WidgetCoordinates,
   ) -> anyhow::Result<WebviewWindow> {
-    let webview_url = WebviewUrl::External(create_init_url(
-      &widget_pack.directory_path,
-      &state.html_path,
-      widget_pack.include_files(),
-    ).await?);
+    let webview_url = WebviewUrl::External(
+      create_init_url(
+        &widget_pack.directory_path,
+        &state.html_path,
+        widget_pack.include_files(),
+      )
+      .await?,
+    );
     let mut builder = WebviewWindowBuilder::new(
       &self.app_handle,
       state.id.clone(),
@@ -296,6 +292,11 @@ impl WidgetFactory {
     .decorations(false)
     .resizable(state.config.resizable)
     .initialization_script(&self.initialization_script(&state)?)
+    .inner_size(
+      coordinates.size.width as f64,
+      coordinates.size.height as f64,
+    )
+    .position(coordinates.position.x as f64, coordinates.position.y as f64)
     // Widgets from the same pack share their browser cache (i.e.
     // `localStorage`, `sessionStorage`, SW cache, etc.).
     // TODO: Add this as an ext method on the Tauri window.
@@ -331,7 +332,6 @@ impl WidgetFactory {
     placement: &WidgetPlacement,
     coordinates: WidgetCoordinates,
   ) -> anyhow::Result<()> {
-
     // On Windows, widget coordinates might be modified when docked to an
     // edge.
     let (size, position) = match placement.dock_to_edge.enabled {
@@ -479,9 +479,8 @@ impl WidgetFactory {
     window: &WebviewWindow,
     state: &WidgetState,
     placement: &WidgetPlacement,
-    coordinates: WidgetCoordinates,
+    coordinates: &WidgetCoordinates,
   ) -> anyhow::Result<()> {
-
     #[cfg(any(
       target_os = "linux",
       target_os = "dragonfly",
@@ -493,26 +492,22 @@ impl WidgetFactory {
       info!("doing dock to edge stuff, {:?}", placement.dock_to_edge);
       // set the appropriate window hints
       let gtk_window = window.gtk_window().unwrap();
-      gtk_window.set_type_hint(Dock);
-      match state.config.z_order {
-        ZOrder::TopMost => gtk_window.set_layer(Layer::Top),
-        ZOrder::BottomMost => gtk_window.set_layer(Layer::Bottom),
-        ZOrder::Normal => (),
-      }
-      gtk_window.set_anchor(
-        match placement.dock_to_edge.edge.unwrap() {
-          DockEdge::Top => Edge::Top,
-          DockEdge::Right => Edge::Right,
-          DockEdge::Bottom => Edge::Bottom,
-          DockEdge::Left => Edge::Left,
-        },
-        true,
-      );
-
       let edge = placement
           .dock_to_edge
           .edge
           .unwrap_or_else(|| coordinates.closest_edge());
+      let gtk_edge = match edge {
+        DockEdge::Top => Edge::Top,
+        DockEdge::Right => Edge::Right,
+        DockEdge::Bottom => Edge::Bottom,
+        DockEdge::Left => Edge::Left,
+      };
+
+      let layer = match state.config.z_order {
+        ZOrder::TopMost => Layer::Top,
+        ZOrder::BottomMost => Layer::Bottom,
+        ZOrder::Normal => Layer::Overlay, // ??
+      };
 
       // Offset from the monitor edge to the window.
       let offset = match edge {
@@ -530,15 +525,15 @@ impl WidgetFactory {
       };
 
       // Margin to reserve *after* the window. Can be negative, but
-      // should not be smaller than the size of the window.
+      // should not be more negative than the size of the window.
       let window_margin = placement
-          .dock_to_edge
-          .window_margin
-          .to_px_scaled(
-            window_length as i32,
-            coordinates.monitor.scale_factor,
-          )
-          .clamp(-coordinates.size.height, i32::MAX);
+        .dock_to_edge
+        .window_margin
+        .to_px_scaled(
+          window_length as i32,
+          coordinates.monitor.scale_factor,
+        )
+        .clamp(-coordinates.size.height, i32::MAX);
 
       let monitor_length = if edge.is_horizontal() {
         coordinates.monitor.height
@@ -550,27 +545,27 @@ impl WidgetFactory {
       // size. This maximum is arbitrary but should be sufficient for
       // most cases.
       let reserved_length = (offset + window_length + window_margin)
-          .clamp(0, monitor_length as i32 / 2);
+        .clamp(0, monitor_length as i32 / 2);
 
-      let reserve_size = if edge.is_horizontal() {
-        PhysicalSize::new(
-          coordinates.monitor.width as i32,
-          reserved_length,
-        )
-      } else {
-        PhysicalSize::new(
-          reserved_length,
-          coordinates.monitor.height as i32,
-        )
-      };
+      gtk_window.set_type_hint(Dock);
+      gtk_window.set_layer(layer);
+      gtk_window.set_anchor(gtk_edge, true);
+      gtk_window.set_exclusive_zone(reserved_length);
+      gtk_window.set_layer_shell_margin(gtk_edge, offset);
+      gtk_window.set_skip_pager_hint(true);
+      gtk_window.set_deletable(false);
+      gtk_window.set_app_paintable(true);
+      gtk_window.set_decorated(false);
+      gtk_window.stick();
 
-      window.allocate_app_bar(reserve_size, reserved_length, edge)?;
+      gtk_window.set_size_request(coordinates.size.width, coordinates.size.height);
+
+      gtk_window.show_all();
     }
 
     let scale_factor = coordinates.monitor.scale_factor as f64;
     let _ = window.set_size(coordinates.size.to_logical::<f64>(scale_factor));
-    let _ =
-        window.set_position(coordinates.position.to_logical::<f64>(scale_factor));
+    let _ = window.set_position(coordinates.position.to_logical::<f64>(scale_factor));
 
     Ok(())
   }
@@ -669,9 +664,11 @@ impl WidgetFactory {
         is_preview,
       };
 
-      let window =
-        self.prepare_window(widget_pack, &state, placement).await.unwrap();
-      self.finish_window(&window, &state, placement, coordinates);
+      let window = self
+        .prepare_window(widget_pack, &state, placement, &coordinates)
+        .await
+        .unwrap();
+      self.finish_window(&window, &state, placement, &coordinates);
 
       // On Windows, Tauri's `skip_taskbar` option isn't 100% reliable,
       // so we also set the window as a tool window.
