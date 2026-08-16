@@ -1,4 +1,3 @@
-use gtk::prelude::WidgetExt;
 use std::{
   collections::HashMap,
   path::PathBuf,
@@ -10,16 +9,14 @@ use std::{
 
 use anyhow::{bail, Context};
 use gdk::WindowTypeHint::Dock;
-use gtk::{prelude::GtkWindowExt, ApplicationWindow};
+use gtk::{
+  prelude::{GtkWindowExt, WidgetExt},
+  ApplicationWindow,
+};
 use gtk_layer_shell::{Edge, Layer, LayerShell};
 use serde::Serialize;
 use tao::platform::unix::{WindowBuilderExtUnix, WindowExtUnix};
-use tauri::{
-  self, ipc::RuntimeCapability, webview::WebviewBuilder,
-  window::WindowBuilder, AppHandle, Manager, PhysicalPosition,
-  PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-  Window, WindowEvent, Wry,
-};
+use tauri::{self, ipc::RuntimeCapability, AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry};
 use tokio::{
   sync::{broadcast, Mutex},
   task,
@@ -493,9 +490,9 @@ impl WidgetFactory {
       // set the appropriate window hints
       let gtk_window = window.gtk_window().unwrap();
       let edge = placement
-          .dock_to_edge
-          .edge
-          .unwrap_or_else(|| coordinates.closest_edge());
+        .dock_to_edge
+        .edge
+        .unwrap_or_else(|| coordinates.closest_edge());
       let gtk_edge = match edge {
         DockEdge::Top => Edge::Top,
         DockEdge::Right => Edge::Right,
@@ -558,14 +555,17 @@ impl WidgetFactory {
       gtk_window.set_decorated(false);
       gtk_window.stick();
 
-      gtk_window.set_size_request(coordinates.size.width, coordinates.size.height);
+      gtk_window
+        .set_size_request(coordinates.size.width, coordinates.size.height);
 
       gtk_window.show_all();
     }
 
     let scale_factor = coordinates.monitor.scale_factor as f64;
-    let _ = window.set_size(coordinates.size.to_logical::<f64>(scale_factor));
-    let _ = window.set_position(coordinates.position.to_logical::<f64>(scale_factor));
+    let _ =
+      window.set_size(coordinates.size.to_logical::<f64>(scale_factor));
+    let _ = window
+      .set_position(coordinates.position.to_logical::<f64>(scale_factor));
 
     Ok(())
   }
