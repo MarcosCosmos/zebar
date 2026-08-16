@@ -1,31 +1,43 @@
-use gtk::prelude::GtkWindowExt;
 use std::{
   collections::HashMap,
   path::PathBuf,
   sync::{
     atomic::{AtomicU32, Ordering},
-    Arc,
+    Arc, Weak,
   },
 };
 
 use anyhow::{bail, Context};
+use gdk::WindowTypeHint::Dock;
+use gtk::{prelude::GtkWindowExt, ApplicationWindow};
+use gtk_layer_shell::{Edge, Layer, LayerShell};
 use serde::Serialize;
+use tao::platform::unix::{WindowBuilderExtUnix, WindowExtUnix};
 use tauri::{
-  self, AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
-  WebviewWindowBuilder, WindowEvent,
+  self, ipc::RuntimeCapability, webview::WebviewBuilder,
+  window::WindowBuilder, AppHandle, Manager, PhysicalPosition,
+  PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+  Window, WindowEvent, Wry,
 };
 use tokio::{
   sync::{broadcast, Mutex},
   task,
 };
 use tracing::{error, info};
-use gdk::WindowTypeHint::Dock;
-use gtk_layer_shell::{Edge, Layer, LayerShell};
 
 #[cfg(target_os = "macos")]
 use crate::common::macos::WindowExtMacOs;
 #[cfg(target_os = "windows")]
 use crate::common::windows::{remove_app_bar, WindowExtWindows};
+
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use crate::common::linux::WindowExtLinux;
 use crate::{
   app_settings::AppSettings,
   asset_server::create_init_url,
@@ -212,6 +224,357 @@ impl WidgetFactory {
       .await
   }
 
+  /// Sets the z-order of the window.
+  fn set_z_order(
+    window: &tauri::WebviewWindow,
+    z_order: &ZOrder,
+    _placement: &WidgetPlacement,
+  ) -> anyhow::Result<()> {
+    // On macOS, the window level must be set above the menu bar or at the
+    // bottom-most level to prevent it from being shifted down beneath the
+    // menu bar.
+    #[cfg(target_os = "macos")]
+    {
+      if placement.dock_to_edge.enabled
+        && placement.dock_to_edge.edge == Some(DockEdge::Top)
+      {
+        return if *z_order == ZOrder::TopMost {
+          window.as_ref().window().set_above_menu_bar()
+        } else {
+          window
+            .set_always_on_bottom(true)
+            .map_err(anyhow::Error::from)
+        };
+      }
+    }
+
+    match z_order {
+      ZOrder::Normal => {
+        // Default z-order, no special handling needed.
+        Ok(())
+      }
+      ZOrder::TopMost => {
+        #[cfg(not(target_os = "macos"))]
+        {
+          window.set_always_on_top(true).map_err(anyhow::Error::from)
+        }
+        // On macOS, we need to set the window above the menu bar for it
+        // to truly be always on top.
+        #[cfg(target_os = "macos")]
+        {
+          window.as_ref().window().set_above_menu_bar()
+        }
+      }
+      ZOrder::BottomMost => window
+        .set_always_on_bottom(true)
+        .map_err(anyhow::Error::from),
+    }
+  }
+
+  async fn prepare_window(
+    &self,
+    widget_pack: &WidgetPack,
+    state: &WidgetState,
+    placement: &WidgetPlacement
+  ) -> anyhow::Result<WebviewWindow> {
+    let webview_url = WebviewUrl::External(create_init_url(
+      &widget_pack.directory_path,
+      &state.html_path,
+      widget_pack.include_files(),
+    ).await?);
+    let mut builder = WebviewWindowBuilder::new(
+      &self.app_handle,
+      state.id.clone(),
+      webview_url,
+    )
+    .title(format!("Zebar - {} / {}", state.pack_id, state.name))
+    .focused(state.config.focused)
+    .skip_taskbar(!state.config.shown_in_taskbar)
+    .visible_on_all_workspaces(true)
+    .transparent(state.config.transparent)
+    .shadow(false)
+    .decorations(false)
+    .resizable(state.config.resizable)
+    .initialization_script(&self.initialization_script(&state)?)
+    // Widgets from the same pack share their browser cache (i.e.
+    // `localStorage`, `sessionStorage`, SW cache, etc.).
+    // TODO: Add this as an ext method on the Tauri window.
+    // NOTE: THIS CAN BE USED BY THE WRY CONTRSUCTOR
+    .data_directory(
+      self.app_settings.webview_cache_dir.join(&state.pack_id),
+    );
+
+    builder = match state.config.z_order {
+      ZOrder::Normal => builder,
+      ZOrder::TopMost => builder.always_on_top(true),
+      ZOrder::BottomMost => builder.always_on_bottom(true),
+    };
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    ))]
+    {
+      builder = builder.wlr_layer_shell(placement.dock_to_edge.enabled);
+    }
+
+    Ok(builder.build()?)
+  }
+
+  #[cfg(windows)]
+  fn finish_window(
+    &self,
+    window: &Window,
+    state: &WidgetState,
+    placement: &WidgetPlacement,
+    coordinates: WidgetCoordinates,
+  ) -> anyhow::Result<()> {
+
+    // On Windows, widget coordinates might be modified when docked to an
+    // edge.
+    let (size, position) = match placement.dock_to_edge.enabled {
+      false => (coordinates.size, coordinates.position),
+      true => {
+        /// Dock the widget window to a given edge. This might result in
+        /// the window being resized or repositioned (e.g. if a
+        /// window is already docked to the given edge).
+        ///
+        /// Returns the new window size and position.
+        // Disallow docking with a centered anchor point. Doesn't make
+        // sense.
+        if coordinates.anchor == AnchorPoint::Center {
+          (coordinates.size, coordinates.position)
+        } else {
+          let edge = placement
+            .dock_to_edge
+            .edge
+            .unwrap_or_else(|| coordinates.closest_edge());
+
+          // Offset from the monitor edge to the window.
+          let offset = match edge {
+            DockEdge::Top => coordinates.offset.y,
+            DockEdge::Bottom => -coordinates.offset.y,
+            DockEdge::Left => coordinates.offset.x,
+            DockEdge::Right => -coordinates.offset.x,
+          };
+
+          // Length of the window perpendicular to the monitor edge.
+          let window_length = if edge.is_horizontal() {
+            coordinates.size.height
+          } else {
+            coordinates.size.width
+          };
+
+          // Margin to reserve *after* the window. Can be negative, but
+          // should not be smaller than the size of the window.
+          let window_margin = placement
+            .dock_to_edge
+            .window_margin
+            .to_px_scaled(
+              window_length as i32,
+              coordinates.monitor.scale_factor,
+            )
+            .clamp(-coordinates.size.height, i32::MAX);
+
+          let monitor_length = if edge.is_horizontal() {
+            coordinates.monitor.height
+          } else {
+            coordinates.monitor.width
+          };
+
+          // Prevent the reserved amount from exceeding 50% of the monitor
+          // size. This maximum is arbitrary but should be sufficient for
+          // most cases.
+          let reserved_length = (offset + window_length + window_margin)
+            .clamp(0, monitor_length as i32 / 2);
+
+          let reserve_size = if edge.is_horizontal() {
+            PhysicalSize::new(
+              coordinates.monitor.width as i32,
+              reserved_length,
+            )
+          } else {
+            PhysicalSize::new(
+              reserved_length,
+              coordinates.monitor.height as i32,
+            )
+          };
+
+          let reserve_position = match edge {
+            DockEdge::Top | DockEdge::Left => PhysicalPosition::new(
+              coordinates.monitor.x,
+              coordinates.monitor.y,
+            ),
+            DockEdge::Bottom => PhysicalPosition::new(
+              coordinates.monitor.x,
+              coordinates.monitor.y + coordinates.monitor.height as i32
+                - reserved_length,
+            ),
+            DockEdge::Right => PhysicalPosition::new(
+              coordinates.monitor.x + coordinates.monitor.width as i32
+                - reserved_length,
+              coordinates.monitor.y,
+            ),
+          };
+
+          let (allocated_size, allocated_position) = window
+            .allocate_app_bar(reserve_size, reserve_position, edge)?;
+
+          // Adjust the size to account for the window margin.
+          let final_size = if edge.is_horizontal() {
+            PhysicalSize::new(
+              allocated_size.width,
+              allocated_size.height.saturating_sub(window_margin.abs()),
+            )
+          } else {
+            PhysicalSize::new(
+              allocated_size.width.saturating_sub(window_margin.abs()),
+              allocated_size.height,
+            )
+          };
+
+          // Adjust position if we're docked to bottom or right edge to
+          // account for the size reduction.
+          let final_position = match edge {
+            DockEdge::Bottom => PhysicalPosition::new(
+              allocated_position.x,
+              allocated_position.y
+                + (allocated_size.height - final_size.height),
+            ),
+            DockEdge::Right => PhysicalPosition::new(
+              allocated_position.x
+                + (allocated_size.width - final_size.width),
+              allocated_position.y,
+            ),
+            _ => allocated_position,
+          };
+
+          tracing::info!(
+            "Docked widget to edge '{:?}' with size {:?} and position {:?}.",
+            edge,
+            final_size,
+            final_position
+          );
+
+          (final_size, final_position)
+        }
+      }
+    };
+
+    // On Windows, we need to set the position twice to account for
+    // different monitor scale factors. Using the logical position/size
+    // positions the window incorrectly (see: https://github.com/glzr-io/zebar/issues/273).
+    let _ = window.set_size(size);
+    let _ = window.set_position(position);
+    let _ = window.set_size(size);
+    let _ = window.set_position(position);
+    Ok()
+  }
+
+  #[cfg(not(windows))]
+  fn finish_window(
+    &self,
+    window: &WebviewWindow,
+    state: &WidgetState,
+    placement: &WidgetPlacement,
+    coordinates: WidgetCoordinates,
+  ) -> anyhow::Result<()> {
+
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    ))]
+    if (placement.dock_to_edge.enabled) {
+      info!("doing dock to edge stuff, {:?}", placement.dock_to_edge);
+      // set the appropriate window hints
+      let gtk_window = window.gtk_window().unwrap();
+      gtk_window.set_type_hint(Dock);
+      match state.config.z_order {
+        ZOrder::TopMost => gtk_window.set_layer(Layer::Top),
+        ZOrder::BottomMost => gtk_window.set_layer(Layer::Bottom),
+        ZOrder::Normal => (),
+      }
+      gtk_window.set_anchor(
+        match placement.dock_to_edge.edge.unwrap() {
+          DockEdge::Top => Edge::Top,
+          DockEdge::Right => Edge::Right,
+          DockEdge::Bottom => Edge::Bottom,
+          DockEdge::Left => Edge::Left,
+        },
+        true,
+      );
+
+      let edge = placement
+          .dock_to_edge
+          .edge
+          .unwrap_or_else(|| coordinates.closest_edge());
+
+      // Offset from the monitor edge to the window.
+      let offset = match edge {
+        DockEdge::Top => coordinates.offset.y,
+        DockEdge::Bottom => -coordinates.offset.y,
+        DockEdge::Left => coordinates.offset.x,
+        DockEdge::Right => -coordinates.offset.x,
+      };
+
+      // Length of the window perpendicular to the monitor edge.
+      let window_length = if edge.is_horizontal() {
+        coordinates.size.height
+      } else {
+        coordinates.size.width
+      };
+
+      // Margin to reserve *after* the window. Can be negative, but
+      // should not be smaller than the size of the window.
+      let window_margin = placement
+          .dock_to_edge
+          .window_margin
+          .to_px_scaled(
+            window_length as i32,
+            coordinates.monitor.scale_factor,
+          )
+          .clamp(-coordinates.size.height, i32::MAX);
+
+      let monitor_length = if edge.is_horizontal() {
+        coordinates.monitor.height
+      } else {
+        coordinates.monitor.width
+      };
+
+      // Prevent the reserved amount from exceeding 50% of the monitor
+      // size. This maximum is arbitrary but should be sufficient for
+      // most cases.
+      let reserved_length = (offset + window_length + window_margin)
+          .clamp(0, monitor_length as i32 / 2);
+
+      let reserve_size = if edge.is_horizontal() {
+        PhysicalSize::new(
+          coordinates.monitor.width as i32,
+          reserved_length,
+        )
+      } else {
+        PhysicalSize::new(
+          reserved_length,
+          coordinates.monitor.height as i32,
+        )
+      };
+
+      window.allocate_app_bar(reserve_size, reserved_length, edge)?;
+    }
+
+    let scale_factor = coordinates.monitor.scale_factor as f64;
+    let _ = window.set_size(coordinates.size.to_logical::<f64>(scale_factor));
+    let _ =
+        window.set_position(coordinates.position.to_logical::<f64>(scale_factor));
+
+    Ok(())
+  }
+
   /// Opens widget from a resolved widget pack and widget name.
   pub async fn start_widget_by_pack(
     &self,
@@ -220,7 +583,6 @@ impl WidgetFactory {
     open_options: &WidgetOpenOptions,
     is_preview: bool,
   ) -> anyhow::Result<()> {
-
     let widget_config = widget_pack
       .config
       .widgets
@@ -296,15 +658,6 @@ impl WidgetFactory {
         )
       }
 
-      let webview_url = WebviewUrl::External(
-        create_init_url(
-          &widget_pack.directory_path,
-          &html_path,
-          widget_pack.include_files(),
-        )
-        .await?,
-      );
-
       let state = WidgetState {
         id: widget_id.clone(),
         name: widget_name.to_string(),
@@ -316,87 +669,9 @@ impl WidgetFactory {
         is_preview,
       };
 
-      let window = WebviewWindowBuilder::new(
-        &self.app_handle,
-        widget_id.clone(),
-        webview_url,
-      )
-      .title(format!("Zebar - {} / {}", widget_pack.id, widget_name))
-      .focused(widget_config.focused)
-      .skip_taskbar(!widget_config.shown_in_taskbar)
-      .visible_on_all_workspaces(true)
-      .transparent(widget_config.transparent)
-      .shadow(false)
-      .decorations(false)
-      .resizable(widget_config.resizable)
-      .initialization_script(&self.initialization_script(&state)?)
-      // Widgets from the same pack share their browser cache (i.e.
-      // `localStorage`, `sessionStorage`, SW cache, etc.).
-      // TODO: Add this as an ext method on the Tauri window.
-      .data_directory(
-        self.app_settings.webview_cache_dir.join(&widget_pack.id),
-      )
-      .build()?;
-
-      // Widget coordinates might be modified when docked to an edge.
-      let (size, position) = match placement.dock_to_edge.enabled {
-        false => (coordinates.size, coordinates.position),
-        true => self.dock_to_edge(
-          &window,
-          &placement.dock_to_edge,
-          &coordinates,
-        )?,
-      };
-
-      // Adjust the z-order of the window.
-      Self::set_z_order(&window, &widget_config.z_order, placement)?;
-
-      info!("Positioning widget to {:?} {:?}", size, position);
-
-      // On Windows, we need to set the position twice to account for
-      // different monitor scale factors. Using the logical position/size
-      // positions the window incorrectly (see: https://github.com/glzr-io/zebar/issues/273).
-      #[cfg(windows)]
-      {
-        let _ = window.set_size(size);
-        let _ = window.set_position(position);
-        let _ = window.set_size(size);
-        let _ = window.set_position(position);
-      }
-
-      // On macOS/Linux, convert to logical coordinates using the target
-      // monitor's scale factor. Using the physical position/size positions
-      // the window incorrectly.
-      #[cfg(not(windows))]
-      {
-        let scale_factor = coordinates.monitor.scale_factor as f64;
-        let _ = window.set_size(size.to_logical::<f64>(scale_factor));
-        let _ =
-          window.set_position(position.to_logical::<f64>(scale_factor));
-      }
-
-      if (placement.dock_to_edge.enabled) {
-        info!("doing dock to edge stuff, {:?}", placement.dock_to_edge);
-        // set the appropriate window hints
-        let gtk_window = window.gtk_window().unwrap();
-        window.set_focusable(false);
-        gtk_window.set_type_hint(Dock);
-        gtk_window.init_layer_shell();
-        match widget_config.z_order {
-          ZOrder::TopMost => gtk_window.set_layer(Layer::Top),
-          ZOrder::BottomMost => gtk_window.set_layer(Layer::Bottom),
-          ZOrder::Normal => (),
-        }
-        gtk_window.set_anchor(
-          match placement.dock_to_edge.edge.unwrap() {
-            DockEdge::Top => Edge::Top,
-            DockEdge::Right => Edge::Right,
-            DockEdge::Bottom => Edge::Bottom,
-            DockEdge::Left => Edge::Left,
-          },
-          true,
-        );
-      }
+      let window =
+        self.prepare_window(widget_pack, &state, placement).await.unwrap();
+      self.finish_window(&window, &state, placement, coordinates);
 
       // On Windows, Tauri's `skip_taskbar` option isn't 100% reliable,
       // so we also set the window as a tool window.
@@ -427,177 +702,6 @@ impl WidgetFactory {
     }
 
     Ok(())
-  }
-
-  /// Sets the z-order of the window.
-  fn set_z_order(
-    window: &tauri::WebviewWindow,
-    z_order: &ZOrder,
-    _placement: &WidgetPlacement,
-  ) -> anyhow::Result<()> {
-    // On macOS, the window level must be set above the menu bar or at the
-    // bottom-most level to prevent it from being shifted down beneath the
-    // menu bar.
-    #[cfg(target_os = "macos")]
-    {
-      if placement.dock_to_edge.enabled
-        && placement.dock_to_edge.edge == Some(DockEdge::Top)
-      {
-        return if *z_order == ZOrder::TopMost {
-          window.as_ref().window().set_above_menu_bar()
-        } else {
-          window
-            .set_always_on_bottom(true)
-            .map_err(anyhow::Error::from)
-        };
-      }
-    }
-
-    match z_order {
-      ZOrder::Normal => {
-        // Default z-order, no special handling needed.
-        Ok(())
-      }
-      ZOrder::TopMost => {
-        #[cfg(not(target_os = "macos"))]
-        {
-          window.set_always_on_top(true).map_err(anyhow::Error::from)
-        }
-        // On macOS, we need to set the window above the menu bar for it
-        // to truly be always on top.
-        #[cfg(target_os = "macos")]
-        {
-          window.as_ref().window().set_above_menu_bar()
-        }
-      }
-      ZOrder::BottomMost => window
-        .set_always_on_bottom(true)
-        .map_err(anyhow::Error::from),
-    }
-  }
-
-  /// Dock the widget window to a given edge. This might result in the
-  /// window being resized or repositioned (e.g. if a window is already
-  /// docked to the given edge).
-  ///
-  /// Returns the new window size and position.
-  fn dock_to_edge(
-    &self,
-    _window: &tauri::WebviewWindow,
-    _dock_config: &DockConfig,
-    coords: &WidgetCoordinates,
-  ) -> anyhow::Result<(PhysicalSize<i32>, PhysicalPosition<i32>)> {
-    #[cfg(not(target_os = "windows"))]
-    {
-      return Ok((coords.size, coords.position));
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-      // Disallow docking with a centered anchor point. Doesn't make sense.
-      if coords.anchor == AnchorPoint::Center {
-        return Ok((coords.size, coords.position));
-      }
-
-      let edge = dock_config.edge.unwrap_or_else(|| coords.closest_edge());
-
-      // Offset from the monitor edge to the window.
-      let offset = match edge {
-        DockEdge::Top => coords.offset.y,
-        DockEdge::Bottom => -coords.offset.y,
-        DockEdge::Left => coords.offset.x,
-        DockEdge::Right => -coords.offset.x,
-      };
-
-      // Length of the window perpendicular to the monitor edge.
-      let window_length = if edge.is_horizontal() {
-        coords.size.height
-      } else {
-        coords.size.width
-      };
-
-      // Margin to reserve *after* the window. Can be negative, but should
-      // not be smaller than the size of the window.
-      let window_margin = dock_config
-        .window_margin
-        .to_px_scaled(window_length as i32, coords.monitor.scale_factor)
-        .clamp(-coords.size.height, i32::MAX);
-
-      let monitor_length = if edge.is_horizontal() {
-        coords.monitor.height
-      } else {
-        coords.monitor.width
-      };
-
-      // Prevent the reserved amount from exceeding 50% of the monitor
-      // size. This maximum is arbitrary but should be sufficient for
-      // most cases.
-      let reserved_length = (offset + window_length + window_margin)
-        .clamp(0, monitor_length as i32 / 2);
-
-      let reserve_size = if edge.is_horizontal() {
-        PhysicalSize::new(coords.monitor.width as i32, reserved_length)
-      } else {
-        PhysicalSize::new(reserved_length, coords.monitor.height as i32)
-      };
-
-      let reserve_position = match edge {
-        DockEdge::Top | DockEdge::Left => {
-          PhysicalPosition::new(coords.monitor.x, coords.monitor.y)
-        }
-        DockEdge::Bottom => PhysicalPosition::new(
-          coords.monitor.x,
-          coords.monitor.y + coords.monitor.height as i32
-            - reserved_length,
-        ),
-        DockEdge::Right => PhysicalPosition::new(
-          coords.monitor.x + coords.monitor.width as i32 - reserved_length,
-          coords.monitor.y,
-        ),
-      };
-
-      let (allocated_size, allocated_position) = window
-        .as_ref()
-        .window()
-        .allocate_app_bar(reserve_size, reserve_position, edge)?;
-
-      // Adjust the size to account for the window margin.
-      let final_size = if edge.is_horizontal() {
-        PhysicalSize::new(
-          allocated_size.width,
-          allocated_size.height.saturating_sub(window_margin.abs()),
-        )
-      } else {
-        PhysicalSize::new(
-          allocated_size.width.saturating_sub(window_margin.abs()),
-          allocated_size.height,
-        )
-      };
-
-      // Adjust position if we're docked to bottom or right edge to account
-      // for the size reduction.
-      let final_position = match edge {
-        DockEdge::Bottom => PhysicalPosition::new(
-          allocated_position.x,
-          allocated_position.y
-            + (allocated_size.height - final_size.height),
-        ),
-        DockEdge::Right => PhysicalPosition::new(
-          allocated_position.x + (allocated_size.width - final_size.width),
-          allocated_position.y,
-        ),
-        _ => allocated_position,
-      };
-
-      tracing::info!(
-        "Docked widget to edge '{:?}' with size {:?} and position {:?}.",
-        edge,
-        final_size,
-        final_position
-      );
-
-      Ok((final_size, final_position))
-    }
   }
 
   /// Opens presets that are configured to be launched on startup.

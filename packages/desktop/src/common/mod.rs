@@ -9,6 +9,15 @@ mod path_ext;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+pub mod linux;
+
 pub use format_bytes::*;
 pub use fs_util::*;
 pub use interval::*;
