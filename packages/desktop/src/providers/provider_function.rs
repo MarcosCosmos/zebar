@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+use crate::providers::sway::SwayFunction;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "function", rename_all = "snake_case")]
 pub enum ProviderFunction {
   Audio(AudioFunction),
   Media(MediaFunction),
   Systray(SystrayFunction),
+  Sway(SwayFunction),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -53,6 +53,8 @@ gtk = "0.18.2"
 gtk-layer-shell = "0.8.2"
 gdk = "0.18.2"
 tao = "0.35.3"
+futures-util = "0.3.34"
+tokio-util = "0.7.19"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 systray-util = { path = "../../crates/systray-util" }
@@ -63,6 +65,9 @@ windows = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"
 komorebi-util = { path = "../../crates/komorebi-util" }
+
+[target.'cfg(any(target_os = "linux",target_os = "dragonfly",target_os = "freebsd",target_os = "netbsd",target_os = "openbsd"))'.dependencies]
+swayipc-async = "3.0.0"
 
 [features]
 # This feature is used for production builds or when `devPath` points to the

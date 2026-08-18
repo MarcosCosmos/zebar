@@ -12,6 +12,7 @@ use super::{
   host::HostOutput, ip::IpOutput, memory::MemoryOutput,
   network::NetworkOutput, weather::WeatherOutput,
 };
+use crate::providers::sway::SwayOutput;
 
 /// Implements `From<T>` for `ProviderOutput` for each given variant.
 macro_rules! impl_provider_output {
@@ -47,6 +48,14 @@ pub enum ProviderOutput {
   Weather(WeatherOutput),
   #[cfg(windows)]
   Keyboard(KeyboardOutput),
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
+  Sway(SwayOutput),
 }
 
 impl_provider_output! {
@@ -72,4 +81,15 @@ impl_provider_output! {
   Keyboard(KeyboardOutput),
   Komorebi(KomorebiOutput),
   Systray(SystrayOutput),
+}
+
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+impl_provider_output! {
+  Sway(SwayOutput)
 }

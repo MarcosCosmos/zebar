@@ -215,6 +215,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-pidfd"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "958321a23896f573a3f1809437af5816f3bc90dd2d5ffe8b1cd5645f42230c17"
+dependencies = [
+ "async-io",
+ "libc",
+]
+
+[[package]]
 name = "async-process"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5474,6 +5484,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "swayipc-async"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "806f344927009a79deb17bcf103abdc93492254165f651df2bb64e0d6b4bda67"
+dependencies = [
+ "async-io",
+ "async-pidfd",
+ "futures-lite",
+ "serde",
+ "serde_json",
+ "swayipc-types",
+]
+
+[[package]]
+name = "swayipc-types"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a29165dc67819a052bd67962b6c9de7c5d4461f0e8d224eb0f7cdd26cf05a650"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "swift-rs"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7971,6 +8006,7 @@ dependencies = [
  "cocoa",
  "crossbeam",
  "flate2",
+ "futures-util",
  "gdk",
  "globset",
  "gtk",
@@ -7984,6 +8020,7 @@ dependencies = [
  "serde_json",
  "shell-util",
  "starship-battery",
+ "swayipc-async",
  "sysinfo",
  "systray-util",
  "tao 0.35.3",
@@ -7995,6 +8032,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tera",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

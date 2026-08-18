@@ -26,7 +26,8 @@ export const desktopCommands = {
 export type ProviderFunction =
   | AudioFunction
   | MediaFunction
-  | SystrayFunction;
+  | SystrayFunction
+  | SwayFunction;
 
 export interface AudioFunction {
   type: 'audio';
@@ -71,6 +72,14 @@ export interface SystrayFunction {
       iconId: string;
     };
   };
+}
+
+export interface SwayFunction {
+  type: 'sway';
+  function: {
+    name: 'run_command',
+    args: { payload: string },
+  },
 }
 
 function startWidget(

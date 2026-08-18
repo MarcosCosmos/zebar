@@ -23,6 +23,7 @@ use super::{
   ProviderConfig, ProviderFunction, ProviderFunctionResponse,
   ProviderFunctionResult, ProviderOutput, RuntimeType,
 };
+use crate::providers::sway::SwayProvider;
 
 /// Common fields for a provider.
 pub struct CommonProviderState {
@@ -240,6 +241,10 @@ impl ProviderManager {
   }
 
   /// Creates a new provider instance.
+  // todo: make a provider and it's config associated types and
+  // use non-instance methods a la ::new (or props, I forget if rust
+  // supports static class props) to declare the sync type provider side
+  // instead of maintaining this lookup.
   fn create_instance(
     &self,
     config: ProviderConfig,
@@ -254,6 +259,14 @@ impl ProviderManager {
       ProviderConfig::Komorebi(..) => RuntimeType::Async,
       #[cfg(windows)]
       ProviderConfig::Systray(..) => RuntimeType::Async,
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      ))]
+      ProviderConfig::Sway(..) => RuntimeType::Async,
       _ => RuntimeType::Sync,
     };
 
@@ -277,6 +290,17 @@ impl ProviderManager {
           #[cfg(windows)]
           ProviderConfig::Systray(config) => {
             let mut provider = SystrayProvider::new(config, common);
+            provider.start_async().await;
+          }
+          #[cfg(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+          ))]
+          ProviderConfig::Sway(config) => {
+            let mut provider = SwayProvider::new(common);
             provider.start_async().await;
           }
           _ => unreachable!(),
