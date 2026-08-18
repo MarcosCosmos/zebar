@@ -1,4 +1,3 @@
-use crate::providers::sway;
 use rocket::serde::Serialize;
 use swayipc_async::Workspace;
 
@@ -61,6 +60,20 @@ pub struct SwayOutput {
   pub active_binding_mode: Option<String>,
 }
 
+pub fn workspace_eq(a: &Workspace, b: &Workspace) -> bool {
+  a.id == b.id
+    && a.num == b.num
+    && a.name == b.name
+    && a.layout == b.layout
+    && a.visible == b.visible
+    && a.focused == b.focused
+    && a.urgent == b.urgent
+    && a.representation == b.representation
+    && a.rect == b.rect
+    && a.output == b.output
+    && a.focus == b.focus
+}
+
 // the swa ipc doesn't provide, which we can deal with later
 impl PartialEq for SwayOutput {
   fn eq(&self, other: &Self) -> bool {
@@ -68,7 +81,7 @@ impl PartialEq for SwayOutput {
       .all_workspaces
       .iter()
       .zip(other.all_workspaces.iter())
-      .all(|(a, b)| sway::workspace_eq(a, b))
+      .all(|(a, b)| workspace_eq(a, b))
       && self.binding_modes == other.binding_modes
       && self.active_binding_mode == other.active_binding_mode
   }

@@ -3,23 +3,18 @@ use std::{
   path::PathBuf,
   sync::{
     atomic::{AtomicU32, Ordering},
-    Arc, Weak,
+    Arc,
   },
 };
 
 use anyhow::{bail, Context};
 use gdk::WindowTypeHint::Dock;
-use gtk::{
-  prelude::{GtkWindowExt, WidgetExt},
-  ApplicationWindow,
-};
+use gtk::prelude::{GtkWindowExt, WidgetExt};
 use gtk_layer_shell::{Edge, Layer, LayerShell};
 use serde::Serialize;
-use tao::platform::unix::{WindowBuilderExtUnix, WindowExtUnix};
 use tauri::{
-  self, ipc::RuntimeCapability, AppHandle, Manager, PhysicalPosition,
-  PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-  WindowEvent, Wry,
+  self, AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+  WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tokio::{
   sync::{broadcast, Mutex},
@@ -37,8 +32,8 @@ use crate::{
   common::PathExt,
   monitor_state::{Monitor, MonitorState},
   widget_pack::{
-    AnchorPoint, DockConfig, DockEdge, WidgetConfig, WidgetPack,
-    WidgetPackManager, WidgetPlacement, ZOrder,
+    AnchorPoint, DockEdge, WidgetConfig, WidgetPack, WidgetPackManager,
+    WidgetPlacement, ZOrder,
   },
 };
 

@@ -299,7 +299,7 @@ impl ProviderManager {
             target_os = "netbsd",
             target_os = "openbsd"
           ))]
-          ProviderConfig::Sway(config) => {
+          ProviderConfig::Sway(_) => {
             let mut provider = SwayProvider::new(common);
             provider.start_async().await;
           }
