@@ -6,37 +6,45 @@ export interface SwayProviderConfig {
 
 export type SwayProvider = Provider<
   SwayProviderConfig,
-  SwayOutput
+  SwayState
 >;
 
 
-export type NodeLayout = 'SplitH' | 'SplitV' | 'Stacked' | 'Tabbed' | 'Output' | 'Dockarea' | 'None';
-export type Orientation = 'Vertical' | 'Horizontal' | 'None';
+export type SwayNodeLayout = 'SplitH' | 'SplitV' | 'Stacked' | 'Tabbed' | 'Output' | 'Dockarea' | 'None';
+export type SwayOrientation = 'Vertical' | 'Horizontal' | 'None';
 export interface Rect {
   x: number,
   y: number,
   width: number,
   height: number,
 }
-export interface Workspace {
+export interface SwayWorkspace {
   id: number,
   num: number,
-  layout: NodeLayout,
+  name: string,
+  layout: SwayNodeLayout,
   visible: boolean,
   focused: boolean,
   urgent: boolean,
   representation?: string,
-  orientation: Orientation,
+  orientation: SwayOrientation,
   rect: Rect,
   output: String,
   focus: number[],
+}
+
+export interface SwayOutput {
+  name: string,
+  rect: Rect,
 }
 
 export interface SwayResponse {
   /**
    * Workspaces across all monitors.
    */
-  allWorkspaces: Workspace[];
+  allWorkspaces: SwayWorkspace[];
+
+  allOutputs: SwayOutput[];
 
   /**
    * Available binding modes;
@@ -44,23 +52,13 @@ export interface SwayResponse {
   bindingModes: string[];
 
   activeBindingMode: string;
-
-  /**
-   * Invokes a WM command (e.g. `"focus --workspace 1"`).
-   *
-   * @param command WM command to run (e.g. `"focus --workspace 1"`).
-   * @param subjectContainerId (optional) ID of container to use as subject.
-   * If not provided, this defaults to the currently focused container.
-   * @throws If command fails.
-   */
-  runCommand(command: string): Promise<void>;
 }
 
-export interface SwayOutput extends SwayResponse {
+export interface SwayState extends SwayResponse {
   /**
    * Workspaces on the current monitor.
    */
-  currentWorkspaces: Workspace[];
+  currentWorkspaces: SwayWorkspace[];
   // /**
   //  * Workspace displayed on the current monitor.
   //  */
@@ -71,11 +69,8 @@ export interface SwayOutput extends SwayResponse {
   //  */
   // focusedWorkspace: Workspace;
 
-  //
-  // /**
-  //  * All monitors.
-  //  */
-  // allMonitors: Monitor[];
+  currentOutput: SwayOutput;
+
   //
   // /**
   //  * All windows.
@@ -101,4 +96,14 @@ export interface SwayOutput extends SwayResponse {
   //  * Tiling direction of the focused container.
   //  */
   // tilingDirection: TilingDirection;
+
+  /**
+   * Invokes a WM command (e.g. `"focus --workspace 1"`).
+   *
+   * @param command WM command to run (e.g. `"focus --workspace 1"`).
+   * @param subjectContainerId (optional) ID of container to use as subject.
+   * If not provided, this defaults to the currently focused container.
+   * @throws If command fails.
+   */
+  runCommand(command: string): Promise<void>;
 }

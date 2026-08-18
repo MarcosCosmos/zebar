@@ -15,3 +15,4 @@ export * from './weather/weather-provider-types';
 export * from './systray/systray-provider-types';
 export * from './create-provider';
 export * from './create-provider-group';
+export * from './sway/sway-provider-types';

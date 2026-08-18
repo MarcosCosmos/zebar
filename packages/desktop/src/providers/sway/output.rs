@@ -1,5 +1,5 @@
 use rocket::serde::Serialize;
-use swayipc_async::Workspace;
+use swayipc_async::{Output, Workspace};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,11 +22,11 @@ pub struct SwayOutput {
    * Workspaces across all monitors.
    */
   pub all_workspaces: Vec<Workspace>,
-  //
-  // /**
-  //  * All monitors.
-  //  */
-  // allMonitors: Monitor[];
+
+  /**
+   * All monitors.
+   */
+  pub all_outputs: Vec<Output>,
   //
   // /**
   //  * All windows.

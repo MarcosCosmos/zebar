@@ -84,19 +84,22 @@ impl SwayClient {
   pub async fn next_state(&mut self) -> anyhow::Result<SwayOutput> {
     _ = self.event_rx.recv().await;
     match self.write_con.get_workspaces().await? {
-      all_workspaces => match self.write_con.get_binding_modes().await? {
-        binding_modes => {
-          let active_binding_mode =
-            match self.write_con.get_binding_state().await? {
-              name if !name.is_empty() => Some(name),
-              _ => None,
-            };
-          Ok(SwayOutput {
-            all_workspaces,
-            binding_modes,
-            active_binding_mode,
-          })
-        }
+      all_workspaces => match self.write_con.get_outputs().await? {
+        all_outputs => match self.write_con.get_binding_modes().await? {
+          binding_modes => {
+            let active_binding_mode =
+              match self.write_con.get_binding_state().await? {
+                name if !name.is_empty() => Some(name),
+                _ => None,
+              };
+            Ok(SwayOutput {
+              all_workspaces,
+              all_outputs,
+              binding_modes,
+              active_binding_mode,
+            })
+          }
+        },
       },
     }
   }

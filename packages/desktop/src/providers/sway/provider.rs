@@ -1,5 +1,5 @@
 use rocket::serde::{Deserialize, Serialize};
-use swayipc::EventType;
+use swayipc_async::EventType;
 
 use crate::providers::{
   sway::{client::SwayClient, SwayOutput},

@@ -5,21 +5,15 @@ import { desktopCommands, getMonitors, onProviderEmit } from '~/desktop';
 import { getCoordinateDistance } from '~/utils';
 import { createBaseProvider } from '../create-base-provider';
 import type {
-  SwayOutput,
+  SwayState,
   SwayProvider,
-  SwayProviderConfig,
+  SwayProviderConfig, SwayResponse,
 } from '~/providers/sway/sway-provider-types';
-import type {
-  AudioOutput,
-  AudioProvider,
-  AudioProviderConfig,
-  SetMuteOptions,
-  SetVolumeOptions,
-} from '~/providers';
 
 const SwayProviderConfigSchema = z.object({
   type: z.literal('sway'),
 });
+
 
 export function createSwayProvider(
   config: SwayProviderConfig,
@@ -28,24 +22,47 @@ export function createSwayProvider(
 
   return createBaseProvider(mergedConfig, async queue => {
     const monitors = await getMonitors();
-    return onProviderEmit<SwayOutput>(
+
+    const createState = async (output: SwayResponse, configHash: string) => {
+      const currentMonitor = monitors.currentMonitor;
+      console.log(currentMonitor, monitors, output.allOutputs, output.allWorkspaces);
+
+      const currentPosition = {
+        x: monitors.currentMonitor!.x,
+        y: monitors.currentMonitor!.y,
+      };
+
+
+
+      // Get GlazeWM monitor that corresponds to the widget's monitor.
+      const currentOutput = output.allOutputs.reduce((a, b) =>
+        getCoordinateDistance(currentPosition, a.rect) <
+        getCoordinateDistance(currentPosition, b.rect)
+          ? a
+          : b,
+      );
+      return {
+        ...output,
+        currentWorkspaces: output.allWorkspaces.filter(x => x.output === currentOutput.name),
+        currentOutput,
+        runCommand(payload: string) {
+          return desktopCommands.callProviderFunction(configHash, {
+            type: 'sway',
+            function: {
+              name: 'run_command',
+              args: { payload }
+            }
+          });
+        },
+      }
+    };
+    return onProviderEmit<SwayResponse>(
       mergedConfig,
-      ({ configHash, result }) => {
+      async ({ configHash, result }) => {
         if ('error' in result) {
           queue.error(result.error);
         } else {
-          queue.output({
-            ...result.output,
-            runCommand(payload: string) {
-              return desktopCommands.callProviderFunction(configHash, {
-                type: 'sway',
-                function: {
-                  name: 'run_command',
-                  args: { payload }
-                }
-              })
-            },
-          });
+          queue.output(await createState(result.output, configHash));
         }
       },
     );
