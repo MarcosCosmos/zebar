@@ -25,7 +25,6 @@ export function createSwayProvider(
 
     const createState = async (output: SwayResponse, configHash: string) => {
       const currentMonitor = monitors.currentMonitor;
-      console.log(currentMonitor, monitors, output.allOutputs, output.allWorkspaces);
 
       const currentPosition = {
         x: monitors.currentMonitor!.x,
@@ -50,7 +49,7 @@ export function createSwayProvider(
             type: 'sway',
             function: {
               name: 'run_command',
-              args: { payload }
+              payload
             }
           });
         },

@@ -101,7 +101,7 @@ export interface SwayState extends SwayResponse {
    * Invokes a WM command (e.g. `"focus --workspace 1"`).
    *
    * @param command WM command to run (e.g. `"focus --workspace 1"`).
-   * @param subjectContainerId (optional) ID of container to use as subject.
+   * @param `subjectContainerId (optional) ID of container to use as subject.
    * If not provided, this defaults to the currently focused container.
    * @throws If command fails.
    */

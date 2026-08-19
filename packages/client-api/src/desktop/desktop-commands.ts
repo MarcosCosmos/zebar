@@ -78,7 +78,7 @@ export interface SwayFunction {
   type: 'sway';
   function: {
     name: 'run_command',
-    args: { payload: string },
+    payload: string,
   },
 }
 

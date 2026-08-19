@@ -20,6 +20,7 @@ impl SwayProvider {
 pub struct SwayProviderConfig {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "name", content = "payload", rename_all = "snake_case")]
 pub enum SwayFunction {
   RunCommand(String),
   // SendTick(String),
