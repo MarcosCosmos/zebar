@@ -556,6 +556,15 @@ impl WidgetFactory {
 
       gtk_window
         .set_size_request(coordinates.size.width, coordinates.size.height);
+      match gdk::Display::default() {
+        Some(display) => match display.monitor_at_point(coordinates.position.x, coordinates.position.y) {
+          Some(monitor) => {
+            gtk_window.set_monitor(&monitor);
+          },
+          _ => {},
+        },
+        _ => {},
+      };
 
       gtk_window.show_all();
     }
