@@ -4,8 +4,8 @@ import {
 } from '@tauri-apps/api/core';
 
 import { createLogger } from '../utils';
-import type { ProviderConfig } from '~/providers';
-import type { WidgetPlacement } from '~/config';
+import type { ProviderConfig } from '../providers';
+import type { WidgetPlacement } from '../config';
 
 const logger = createLogger();
 

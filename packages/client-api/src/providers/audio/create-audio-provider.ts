@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { createBaseProvider } from '../create-base-provider';
-import { desktopCommands, onProviderEmit } from '~/desktop';
+import { desktopCommands, onProviderEmit } from '../../desktop';
 import type {
   AudioOutput,
   AudioProvider,

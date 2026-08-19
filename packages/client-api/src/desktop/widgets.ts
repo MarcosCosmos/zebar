@@ -1,7 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { desktopCommands } from './desktop-commands';
-import type { WidgetPlacement } from '~/config';
+import type { WidgetPlacement } from '../config';
 
 export interface Widget {
   /**

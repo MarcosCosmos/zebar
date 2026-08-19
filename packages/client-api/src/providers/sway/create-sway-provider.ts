@@ -1,14 +1,14 @@
 
 import { z } from 'zod';
 
-import { desktopCommands, getMonitors, onProviderEmit } from '~/desktop';
-import { getCoordinateDistance } from '~/utils';
+import { desktopCommands, getMonitors, onProviderEmit } from '../../desktop';
+import { getCoordinateDistance } from '../../utils';
 import { createBaseProvider } from '../create-base-provider';
 import type {
   SwayState,
   SwayProvider,
   SwayProviderConfig, SwayResponse,
-} from '~/providers/sway/sway-provider-types';
+} from '../../providers/sway/sway-provider-types';
 
 const SwayProviderConfigSchema = z.object({
   type: z.literal('sway'),

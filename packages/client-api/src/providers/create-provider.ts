@@ -73,8 +73,8 @@ import type {
 import type {
   SwayProvider,
   SwayProviderConfig,
-} from '~/providers/sway/sway-provider-types';
-import { createSwayProvider } from '~/providers/sway/create-sway-provider';
+} from '../providers/sway/sway-provider-types';
+import { createSwayProvider } from '../providers/sway/create-sway-provider';
 
 export interface ProviderConfigMap {
   audio: AudioProviderConfig;
