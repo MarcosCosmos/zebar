@@ -81,27 +81,30 @@ impl SwayClient {
             .await.map_err(|err| err.into())
   }
 
-  pub async fn next_state(&mut self) -> anyhow::Result<SwayOutput> {
+  pub async fn get_state(&mut self) -> anyhow::Result<SwayOutput> {
+      match self.write_con.get_workspaces().await? {
+          all_workspaces => match self.write_con.get_outputs().await? {
+              all_outputs => match self.write_con.get_binding_modes().await? {
+                  binding_modes => {
+                      let active_binding_mode =
+                          match self.write_con.get_binding_state().await? {
+                              name if !name.is_empty() => Some(name),
+                              _ => None,
+                          };
+                      Ok(SwayOutput {
+                          all_workspaces,
+                          all_outputs,
+                          binding_modes,
+                          active_binding_mode,
+                      })
+                  }
+              },
+          },
+      }
+  }
+
+  pub async fn wait_for_update(&mut self) {
     _ = self.event_rx.recv().await;
-    match self.write_con.get_workspaces().await? {
-      all_workspaces => match self.write_con.get_outputs().await? {
-        all_outputs => match self.write_con.get_binding_modes().await? {
-          binding_modes => {
-            let active_binding_mode =
-              match self.write_con.get_binding_state().await? {
-                name if !name.is_empty() => Some(name),
-                _ => None,
-              };
-            Ok(SwayOutput {
-              all_workspaces,
-              all_outputs,
-              binding_modes,
-              active_binding_mode,
-            })
-          }
-        },
-      },
-    }
   }
 
   pub async fn run_command<T: AsRef<str>>(

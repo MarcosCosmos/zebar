@@ -34,10 +34,15 @@ impl Provider for SwayProvider {
 
   async fn start_async(&mut self) {
     match SwayClient::new([EventType::Workspace, EventType::Mode]).await {
-      Ok(mut client) => loop {
-        tokio::select! {
-          state = client.next_state() => {
-            self.0.emitter.emit_output(state);
+      Ok(mut client) => {
+        // emit an initial state of course
+        self.0.emitter.emit_output(client.get_state().await);
+        
+        // now loop for updates
+        loop {
+          tokio::select! {
+          state = client.wait_for_update() => {
+            self.0.emitter.emit_output(client.get_state().await);
           }
           Some(input) = self.0.input.async_rx.recv() => {
             match input {
@@ -59,6 +64,7 @@ impl Provider for SwayProvider {
               _ => {}
             }
           }
+        }
         }
       },
       Err(err) => {
