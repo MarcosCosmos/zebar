@@ -1,4 +1,4 @@
-use rocket::serde::Serialize;
+use serde::Serialize;
 use swayipc_async::{Output, Workspace};
 
 #[derive(Debug, Clone, Serialize)]

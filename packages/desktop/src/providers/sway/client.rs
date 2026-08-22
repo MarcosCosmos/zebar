@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::providers::sway::SwayOutput;
 
+use tracing::{info, warn, error};
 pub struct SwayClient {
   event_rx: UnboundedReceiver<anyhow::Result<Event>>,
   write_con: Connection,
@@ -55,7 +56,7 @@ impl SwayClient {
                     .await.map(|mut events| {
                         let (event_tx, event_rx) = unbounded_channel();
                         let cancellation = CancellationToken::new();
-                        let child_token = cancellation.clone();
+                        let child_token = cancellation.child_token();
                         tokio::spawn(async move {
                             loop {
                                 tokio::select! {
@@ -82,25 +83,25 @@ impl SwayClient {
   }
 
   pub async fn get_state(&mut self) -> anyhow::Result<SwayOutput> {
-      match self.write_con.get_workspaces().await? {
-          all_workspaces => match self.write_con.get_outputs().await? {
-              all_outputs => match self.write_con.get_binding_modes().await? {
-                  binding_modes => {
-                      let active_binding_mode =
-                          match self.write_con.get_binding_state().await? {
-                              name if !name.is_empty() => Some(name),
-                              _ => None,
-                          };
-                      Ok(SwayOutput {
-                          all_workspaces,
-                          all_outputs,
-                          binding_modes,
-                          active_binding_mode,
-                      })
-                  }
-              },
-          },
-      }
+    match self.write_con.get_workspaces().await? {
+      all_workspaces => match self.write_con.get_outputs().await? {
+        all_outputs => match self.write_con.get_binding_modes().await? {
+          binding_modes => {
+            let active_binding_mode =
+              match self.write_con.get_binding_state().await? {
+                name if !name.is_empty() => Some(name),
+                _ => None,
+              };
+            Ok(SwayOutput {
+              all_workspaces,
+              all_outputs,
+              binding_modes,
+              active_binding_mode,
+            })
+          }
+        },
+      },
+    }
   }
 
   pub async fn wait_for_update(&mut self) {
@@ -120,10 +121,10 @@ impl SwayClient {
         if errs.is_empty() {
           Ok(())
         } else {
-          Err(SwayErrorGroup::new(errs).into())
+          Err(SwayErrorGroup::new(errs))?
         }
       }
-      Err(err) => Err(err.into()),
+      Err(err) => Err(err)?,
     }
   }
 }

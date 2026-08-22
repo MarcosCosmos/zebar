@@ -1,17 +1,15 @@
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use swayipc_async::EventType;
 
-use crate::providers::{
-  sway::{client::SwayClient, SwayOutput},
-  CommonProviderState, Provider, ProviderFunction,
-  ProviderFunctionResponse, ProviderInputMsg, RuntimeType,
-};
+use tracing::{info, warn, error};
+
+use crate::providers::{sway::{client::SwayClient, SwayOutput}, CommonProviderState, Provider, ProviderFunction, ProviderFunctionResponse, ProviderInputMsg, RuntimeType};
 
 pub struct SwayProvider(CommonProviderState);
 
 impl SwayProvider {
-  pub fn new(common: CommonProviderState) -> SwayProvider {
-    SwayProvider(common)
+  pub fn new(common: CommonProviderState) -> Self {
+    Self(common)
   }
 }
 
@@ -37,36 +35,36 @@ impl Provider for SwayProvider {
       Ok(mut client) => {
         // emit an initial state of course
         self.0.emitter.emit_output(client.get_state().await);
-        
+
         // now loop for updates
         loop {
           tokio::select! {
-          state = client.wait_for_update() => {
-            self.0.emitter.emit_output(client.get_state().await);
-          }
-          Some(input) = self.0.input.async_rx.recv() => {
-            match input {
-              ProviderInputMsg::Stop => {
-                break;
-              }
-              ProviderInputMsg::Function(
-                ProviderFunction::Sway(f),
-                sender,
-              ) => match f {
-                SwayFunction::RunCommand(payload) => {
-                  let result = client.run_command(payload)
-                    .await
-                    .map(|_| ProviderFunctionResponse::Null)
-                    .map_err(|err| err.to_string());
-                  sender.send(result).unwrap();
+            state = client.wait_for_update() => {
+              self.0.emitter.emit_output(client.get_state().await);
+            }
+            Some(input) = self.0.input.async_rx.recv() => {
+              match input {
+                ProviderInputMsg::Stop => {
+                  break;
                 }
-              },
-              _ => {}
+                ProviderInputMsg::Function(
+                  ProviderFunction::Sway(f),
+                  sender,
+                ) => match f {
+                  SwayFunction::RunCommand(payload) => {
+                    let result = client.run_command(payload)
+                      .await
+                      .map(|_| ProviderFunctionResponse::Null)
+                      .map_err(|err| err.to_string());
+                    sender.send(result).unwrap();
+                  }
+                },
+                _ => {}
+              }
             }
           }
         }
-        }
-      },
+      }
       Err(err) => {
         error!("{:?}", err);
         self

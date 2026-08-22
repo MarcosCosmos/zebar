@@ -191,10 +191,12 @@ pub async fn call_provider_function(
   function: ProviderFunction,
   provider_manager: State<'_, Arc<ProviderManager>>,
 ) -> anyhow::Result<ProviderFunctionResponse, String> {
-  provider_manager
+  let res = provider_manager
     .call_function(config_hash, function)
     .await
-    .map_err(|err| err.to_string())
+    .map_err(|err| err.to_string());
+  warn!("res b: {:?}", res);
+  res
 }
 
 #[tauri::command]

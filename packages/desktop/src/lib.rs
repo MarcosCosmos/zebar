@@ -1,6 +1,7 @@
 // Prevent additional console window on Windows in release mode.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![feature(iterator_try_collect)]
+#![feature(unboxed_closures)]
 
 use std::{env, path::Path, sync::Arc};
 

@@ -7,18 +7,29 @@ use super::{
   audio::AudioProviderConfig, keyboard::KeyboardProviderConfig,
   media::MediaProviderConfig, systray::SystrayProviderConfig,
 };
-use super::{
-  battery::BatteryProviderConfig, cpu::CpuProviderConfig,
-  disk::DiskProviderConfig, host::HostProviderConfig,
-  ip::IpProviderConfig, memory::MemoryProviderConfig,
-  network::NetworkProviderConfig, weather::WeatherProviderConfig,
+use super::{battery::BatteryProviderConfig, cpu::CpuProviderConfig, disk::DiskProviderConfig, host::HostProviderConfig, ip::IpProviderConfig, memory::MemoryProviderConfig, network::NetworkProviderConfig, weather::WeatherProviderConfig};
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use crate::providers::{
+  audio::AudioProviderConfig, sway::SwayProviderConfig,
 };
-use crate::providers::sway::SwayProviderConfig;
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderConfig {
-  #[cfg(windows)]
+  #[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
   Audio(AudioProviderConfig),
   Battery(BatteryProviderConfig),
   Cpu(CpuProviderConfig),

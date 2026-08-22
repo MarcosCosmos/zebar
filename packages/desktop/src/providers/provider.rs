@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait Provider {
+  
   fn runtime_type(&self) -> RuntimeType;
 
   /// Callback for when the provider is started.

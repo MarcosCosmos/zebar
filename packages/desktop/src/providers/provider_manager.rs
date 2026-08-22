@@ -23,7 +23,14 @@ use super::{
   ProviderConfig, ProviderFunction, ProviderFunctionResponse,
   ProviderFunctionResult, ProviderOutput, RuntimeType,
 };
-use crate::providers::sway::SwayProvider;
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use crate::providers::{audio::AudioProvider, sway::SwayProvider};
 
 /// Common fields for a provider.
 pub struct CommonProviderState {
@@ -241,10 +248,6 @@ impl ProviderManager {
   }
 
   /// Creates a new provider instance.
-  // todo: make a provider and it's config associated types and
-  // use non-instance methods a la ::new (or props, I forget if rust
-  // supports static class props) to declare the sync type provider side
-  // instead of maintaining this lookup.
   fn create_instance(
     &self,
     config: ProviderConfig,
@@ -267,8 +270,17 @@ impl ProviderManager {
         target_os = "openbsd"
       ))]
       ProviderConfig::Sway(..) => RuntimeType::Async,
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      ))]
+      ProviderConfig::Audio(..) => RuntimeType::Async,
       _ => RuntimeType::Sync,
     };
+
 
     // Spawn the provider's task based on its runtime type.
     let task_handle = match &runtime_type {
@@ -303,6 +315,17 @@ impl ProviderManager {
             let mut provider = SwayProvider::new(common);
             provider.start_async().await;
           }
+          #[cfg(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+          ))]
+          ProviderConfig::Audio(..) => {
+            let mut provider = AudioProvider::new(common);
+            provider.start_async().await;
+          }
           _ => unreachable!(),
         }
 
@@ -310,9 +333,9 @@ impl ProviderManager {
       }),
       RuntimeType::Sync => task::spawn_blocking(move || {
         match config {
-          #[cfg(windows)]
+          #[cfg(target_os = "windows")]
           ProviderConfig::Audio(config) => {
-            let mut provider = AudioProvider::new(config, common);
+            let mut provider = AudioProvider::new(common);
             provider.start_sync();
           }
           ProviderConfig::Battery(config) => {
@@ -395,7 +418,9 @@ impl ProviderManager {
       }
     }
 
-    rx.await?.map_err(anyhow::Error::msg)
+    let res = rx.await?.map_err(anyhow::Error::msg);
+    warn!("result, {:?}", res);
+    res
   }
 
   /// Destroys and cleans up the provider with the given config.

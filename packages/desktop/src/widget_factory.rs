@@ -20,7 +20,7 @@ use tokio::{
   sync::{broadcast, Mutex},
   task,
 };
-use tracing::{error, info};
+use tracing::{info, warn, error};
 
 #[cfg(target_os = "macos")]
 use crate::common::macos::WindowExtMacOs;
@@ -557,13 +557,15 @@ impl WidgetFactory {
       gtk_window
         .set_size_request(coordinates.size.width, coordinates.size.height);
       match gdk::Display::default() {
-        Some(display) => match display.monitor_at_point(coordinates.position.x, coordinates.position.y) {
+        Some(display) => match display
+          .monitor_at_point(coordinates.position.x, coordinates.position.y)
+        {
           Some(monitor) => {
             gtk_window.set_monitor(&monitor);
-          },
-          _ => {},
+          }
+          _ => {}
         },
-        _ => {},
+        _ => {}
       };
 
       gtk_window.show_all();
@@ -676,7 +678,7 @@ impl WidgetFactory {
         .prepare_window(widget_pack, &state, placement, &coordinates)
         .await
         .unwrap();
-      self.finish_window(&window, &state, placement, &coordinates);
+      self.finish_window(&window, &state, placement, &coordinates)?;
 
       // On Windows, Tauri's `skip_taskbar` option isn't 100% reliable,
       // so we also set the window as a tool window.

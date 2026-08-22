@@ -37,7 +37,6 @@ impl CpuProvider {
   }
 
   fn run_interval(&self) -> anyhow::Result<CpuOutput> {
-    info!("checking cpu");
     let mut sysinfo = self.common.sysinfo.blocking_lock();
     sysinfo.refresh_cpu();
 
