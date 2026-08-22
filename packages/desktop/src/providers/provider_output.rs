@@ -1,17 +1,33 @@
 use serde::Serialize;
 
+#[cfg(any(
+  target_os = "windows",
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use super::audio::AudioOutput;
 #[cfg(any(target_os = "macos", windows))]
 use super::komorebi::KomorebiOutput;
-#[cfg(windows)]
-use super::{
-  audio::AudioOutput, keyboard::KeyboardOutput, media::MediaOutput,
-  systray::SystrayOutput,
-};
 use super::{
   battery::BatteryOutput, cpu::CpuOutput, disk::DiskOutput,
   host::HostOutput, ip::IpOutput, memory::MemoryOutput,
   network::NetworkOutput, weather::WeatherOutput,
 };
+#[cfg(windows)]
+use super::{
+  keyboard::KeyboardOutput, media::MediaOutput, systray::SystrayOutput,
+};
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use crate::providers::sway::SwayOutput;
 
 /// Implements `From<T>` for `ProviderOutput` for each given variant.
 macro_rules! impl_provider_output {
@@ -29,8 +45,6 @@ macro_rules! impl_provider_output {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ProviderOutput {
-  #[cfg(windows)]
-  Audio(AudioOutput),
   Battery(BatteryOutput),
   Cpu(CpuOutput),
   Host(HostOutput),
@@ -47,6 +61,23 @@ pub enum ProviderOutput {
   Weather(WeatherOutput),
   #[cfg(windows)]
   Keyboard(KeyboardOutput),
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
+  Sway(SwayOutput),
+  #[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
+  Audio(AudioOutput),
 }
 
 impl_provider_output! {
@@ -67,9 +98,31 @@ impl_provider_output! {
 
 #[cfg(windows)]
 impl_provider_output! {
-  Audio(AudioOutput),
   Media(MediaOutput),
   Keyboard(KeyboardOutput),
   Komorebi(KomorebiOutput),
   Systray(SystrayOutput),
+}
+
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+impl_provider_output! {
+  Sway(SwayOutput)
+}
+
+#[cfg(any(
+  target_os = "windows",
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+impl_provider_output! {
+  Audio(AudioOutput)
 }

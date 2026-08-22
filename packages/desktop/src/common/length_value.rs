@@ -4,13 +4,13 @@ use anyhow::{bail, Context};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub struct LengthValue {
   pub amount: f32,
   pub unit: LengthUnit,
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq, Serialize)]
+#[derive(Copy, Debug, Deserialize, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LengthUnit {
   Percentage,

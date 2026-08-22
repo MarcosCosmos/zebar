@@ -1,6 +1,3 @@
-use std::ffi::c_void;
-
-use anyhow::Context;
 #[cfg(target_os = "windows")]
 use windows::Win32::{
   Foundation::{HANDLE, INVALID_HANDLE_VALUE, WIN32_ERROR},

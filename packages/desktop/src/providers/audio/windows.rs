@@ -24,6 +24,7 @@ use windows::Win32::{
 };
 use windows_core::{Interface, GUID, HSTRING, PCWSTR};
 
+use super::common::*;
 use crate::{
   common::windows::COM_INIT,
   providers::{
@@ -31,39 +32,6 @@ use crate::{
     ProviderFunctionResponse, ProviderInputMsg, RuntimeType,
   },
 };
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioProviderConfig {}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioOutput {
-  pub playback_devices: Vec<AudioDevice>,
-  pub recording_devices: Vec<AudioDevice>,
-  pub all_devices: Vec<AudioDevice>,
-  pub default_playback_device: Option<AudioDevice>,
-  pub default_recording_device: Option<AudioDevice>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioDevice {
-  pub name: String,
-  pub device_id: String,
-  pub device_type: DeviceType,
-  pub volume: u32,
-  pub is_default_playback: bool,
-  pub is_default_recording: bool,
-  pub is_muted: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DeviceType {
-  Playback,
-  Recording,
-}
 
 impl From<EDataFlow> for DeviceType {
   fn from(flow: EDataFlow) -> Self {
@@ -135,53 +103,53 @@ impl AudioProvider {
   /// Main entry point.
   fn start(&mut self) -> anyhow::Result<()> {
     COM_INIT.with(|_| {
-      let com_enumerator: IMMDeviceEnumerator = unsafe {
-        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
-      }?;
+            let com_enumerator: IMMDeviceEnumerator = unsafe {
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            }?;
 
-      // Note that this would sporadically segfault if we didn't keep a
-      // separate variable for `IMMNotificationClient` when registering the
-      // callback. Something funky with lifetimes and the COM API's.
-      let com_device_callback: IMMNotificationClient = DeviceCallback {
-        event_tx: self.event_tx.clone(),
-      }
-      .into();
+            // Note that this would sporadically segfault if we didn't keep a
+            // separate variable for `IMMNotificationClient` when registering the
+            // callback. Something funky with lifetimes and the COM API's.
+            let com_device_callback: IMMNotificationClient = DeviceCallback {
+                event_tx: self.event_tx.clone(),
+            }
+                .into();
 
-      // Register device add/remove callback.
-      unsafe {
-        com_enumerator
-          .RegisterEndpointNotificationCallback(&com_device_callback)
-      }?;
+            // Register device add/remove callback.
+            unsafe {
+                com_enumerator
+                    .RegisterEndpointNotificationCallback(&com_device_callback)
+            }?;
 
-      self.com_enumerator = Some(com_enumerator);
+            self.com_enumerator = Some(com_enumerator);
 
-      // Update device list and default device IDs.
-      for com_device in self.active_devices()? {
-        self.add_device(com_device)?;
-      }
+            // Update device list and default device IDs.
+            for com_device in self.active_devices()? {
+                self.add_device(com_device)?;
+            }
 
-      self.default_playback_id =
-        self.default_device_id(&DeviceType::Playback)?;
-      self.default_recording_id =
-        self.default_device_id(&DeviceType::Recording)?;
+            self.default_playback_id =
+                self.default_device_id(&DeviceType::Playback)?;
+            self.default_recording_id =
+                self.default_device_id(&DeviceType::Recording)?;
 
-      // Emit initial output.
-      self.emit_output();
+            // Emit initial output.
+            self.emit_output();
 
-      // Audio events (especially volume changes) can be frequent, so we
-      // batch the emissions together.
-      let mut last_emit = Instant::now();
-      let mut pending_emission = false;
-      const BATCH_DELAY: Duration = Duration::from_millis(25);
+            // Audio events (especially volume changes) can be frequent, so we
+            // batch the emissions together.
+            let mut last_emit = Instant::now();
+            let mut pending_emission = false;
+            const BATCH_DELAY: Duration = Duration::from_millis(25);
 
-      // Listen to audio-related events.
-      loop {
-        let batch_timer = match pending_emission {
-          true => at(last_emit + BATCH_DELAY),
-          false => never(),
-        };
+            // Listen to audio-related events.
+            loop {
+                let batch_timer = match pending_emission {
+                    true => at(last_emit + BATCH_DELAY),
+                    false => never(),
+                };
 
-        crossbeam::select! {
+                crossbeam::select! {
           recv(self.event_rx) -> event => {
             if let Ok(event) = event {
               debug!("Got audio event: {:?}", event);
@@ -222,10 +190,10 @@ impl AudioProvider {
             }
           }
         }
-      }
+            }
 
-      Ok(())
-    })
+            Ok(())
+        })
   }
 
   /// Enumerates active devices of all device types.

@@ -1,4 +1,4 @@
-import type { DataSizeMeasure } from '~/utils';
+import type { DataSizeMeasure } from '../../utils';
 import type { Provider } from '../create-base-provider';
 
 export interface NetworkProviderConfig {

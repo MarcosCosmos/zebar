@@ -36,3 +36,7 @@ windows = { version = "0.58", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_NetworkManagement_WiFi",
 ] }
+
+[patch.crates-io]
+tauri = { path = "../tauri/crates/tauri"}
+tao = { path = "../tao"}

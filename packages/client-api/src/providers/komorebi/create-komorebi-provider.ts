@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { getMonitors, onProviderEmit } from '~/desktop';
-import { getCoordinateDistance } from '~/utils';
+import { getMonitors, onProviderEmit } from '../../desktop';
+import { getCoordinateDistance } from '../../utils';
 import { createBaseProvider } from '../create-base-provider';
 import type {
   KomorebiProvider,

@@ -1,5 +1,5 @@
 import type { ProviderConfig } from './create-provider';
-import { createLogger } from '~/utils';
+import { createLogger } from '../utils';
 
 export interface Provider<TConfig, TOutput> {
   /**

@@ -1,4 +1,3 @@
-#[cfg(windows)]
 mod audio;
 mod battery;
 mod cpu;
@@ -18,6 +17,14 @@ mod provider_config;
 mod provider_function;
 mod provider_manager;
 mod provider_output;
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+pub mod sway;
 #[cfg(windows)]
 mod systray;
 mod weather;

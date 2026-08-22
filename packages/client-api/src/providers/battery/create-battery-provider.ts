@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { createBaseProvider } from '../create-base-provider';
-import { onProviderEmit } from '~/desktop';
+import { onProviderEmit } from '../../desktop';
 import type {
   BatteryOutput,
   BatteryProvider,

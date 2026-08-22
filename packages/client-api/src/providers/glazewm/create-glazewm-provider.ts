@@ -15,8 +15,8 @@ import {
 } from 'glazewm';
 import { z } from 'zod';
 
-import { getMonitors } from '~/desktop';
-import { getCoordinateDistance } from '~/utils';
+import { getMonitors } from '../../desktop';
+import { getCoordinateDistance } from '../../utils';
 import { createBaseProvider } from '../create-base-provider';
 import type {
   GlazeWmProvider,

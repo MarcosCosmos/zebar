@@ -4,8 +4,8 @@ import {
 } from '@tauri-apps/api/core';
 
 import { createLogger } from '../utils';
-import type { ProviderConfig } from '~/providers';
-import type { WidgetPlacement } from '~/config';
+import type { ProviderConfig } from '../providers';
+import type { WidgetPlacement } from '../config';
 
 const logger = createLogger();
 
@@ -26,7 +26,8 @@ export const desktopCommands = {
 export type ProviderFunction =
   | AudioFunction
   | MediaFunction
-  | SystrayFunction;
+  | SystrayFunction
+  | SwayFunction;
 
 export interface AudioFunction {
   type: 'audio';
@@ -71,6 +72,14 @@ export interface SystrayFunction {
       iconId: string;
     };
   };
+}
+
+export interface SwayFunction {
+  type: 'sway';
+  function: {
+    name: 'run_command',
+    payload: string,
+  },
 }
 
 function startWidget(

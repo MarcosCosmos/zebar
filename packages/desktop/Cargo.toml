@@ -9,6 +9,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "zebar_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -34,7 +38,7 @@ tauri = { version = "2", features = [
   "macos-private-api",
   "protocol-asset",
   "tray-icon",
-  "webview-data-url",
+  "webview-data-url"
 ] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
@@ -45,6 +49,11 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
+gtk = "0.18.2"
+gtk-layer-shell = "0.8.2"
+gdk = "0.18.2"
+futures-util = "0.3.34"
+tokio-util = "0.7.19"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 systray-util = { path = "../../crates/systray-util" }
@@ -55,6 +64,10 @@ windows = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"
 komorebi-util = { path = "../../crates/komorebi-util" }
+
+[target.'cfg(any(target_os = "linux",target_os = "dragonfly",target_os = "freebsd",target_os = "netbsd",target_os = "openbsd"))'.dependencies]
+swayipc-async = "3.0.0"
+libpulse-binding = "2.30.1"
 
 [features]
 # This feature is used for production builds or when `devPath` points to the
