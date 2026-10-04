@@ -8,7 +8,21 @@ use std::{
 };
 
 use anyhow::{bail, Context};
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
 use gdk::WindowTypeHint::Dock;
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
 use gtk::prelude::{GtkWindowExt, WidgetExt};
 #[cfg(any(
   target_os = "linux",
