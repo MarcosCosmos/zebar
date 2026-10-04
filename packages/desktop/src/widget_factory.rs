@@ -654,11 +654,19 @@ impl WidgetFactory {
       gtk_window.set_anchor(gtk_edge, true);
       gtk_window.set_exclusive_zone(reserved_length);
       gtk_window.set_layer_shell_margin(gtk_edge, offset);
-      gtk_window.set_skip_pager_hint(true);
-      // gtk_window.set_deletable(false);
-      // gtk_window.set_app_paintable(true);
-      // gtk_window.set_decorated(false);
-      gtk_window.stick();
+
+      // this size request bounds the click/mouse intercept region of the widget.
+      // without it, it blocks clicks even though it doesn't block the window from drawing in the window management
+      gtk_window
+        .set_size_request(coords.size.width, coords.size.height);
+
+      // explicit monitor placement is required when using layer shell placement - absolute coordinates don't work
+      if let Some(display) = gdk::Display::default() {
+        if let Some(monitor) = display
+          .monitor_at_point(coords.position.x, coords.position.y) {
+          gtk_window.set_monitor(&monitor);
+        }
+      };
 
       Ok((coords.size, coords.position))
     }
