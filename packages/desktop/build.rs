@@ -23,6 +23,6 @@ const COMMANDS: &[&str] = &[
   "shell_write",
   "shell_kill",
 ];
-fn main() {
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&COMMANDS))).unwrap();
+fn main() { 
+  tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&COMMANDS))).unwrap();
 }
