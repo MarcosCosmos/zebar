@@ -8,6 +8,16 @@ use std::{
 };
 
 use anyhow::{bail, Context};
+use gdk::WindowTypeHint::Dock;
+use gtk::prelude::{GtkWindowExt, WidgetExt};
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use gtk_layer_shell::{Edge, Layer, LayerShell};
 use serde::Serialize;
 use tauri::{
   self, AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
@@ -33,17 +43,6 @@ use crate::{
     WidgetPackManager, WidgetPlacement, ZOrder,
   },
 };
-
-#[cfg(any(
-  target_os = "linux",
-  target_os = "dragonfly",
-  target_os = "freebsd",
-  target_os = "netbsd",
-  target_os = "openbsd"
-))]
-use gtk_layer_shell::{Edge, Layer, LayerShell};
-use gdk::WindowTypeHint::Dock;
-use gtk::prelude::{GtkWindowExt, WidgetExt};
 
 /// Manages the creation of Zebar widgets.
 #[derive(Debug)]
@@ -344,8 +343,8 @@ impl WidgetFactory {
       .data_directory(
         self.app_settings.webview_cache_dir.join(&widget_pack.id),
       )
-        .visible(false) // initially hide so that wlr_layer_shell works
-        .build()?;
+      .visible(false) // initially hide so that wlr_layer_shell works
+      .build()?;
 
       #[cfg(any(
         target_os = "linux",
@@ -355,8 +354,11 @@ impl WidgetFactory {
         target_os = "openbsd"
       ))]
       {
-        // we need to engage the layer shell if shown_in_taskbar is false, not just if docking.
-        if !widget_config.shown_in_taskbar || placement.dock_to_edge.enabled {
+        // we need to engage the layer shell if shown_in_taskbar is false,
+        // not just if docking.
+        if !widget_config.shown_in_taskbar
+          || placement.dock_to_edge.enabled
+        {
           let gtk_window = window.gtk_window()?;
           gtk_window.init_layer_shell();
         }
@@ -523,7 +525,7 @@ impl WidgetFactory {
       target_os = "windows"
     )))]
     {
-      return Ok((coords.size, coords.position))
+      return Ok((coords.size, coords.position));
     }
 
     // Disallow docking with a centered anchor point. Doesn't make sense.
@@ -655,15 +657,17 @@ impl WidgetFactory {
       gtk_window.set_exclusive_zone(reserved_length);
       gtk_window.set_layer_shell_margin(gtk_edge, offset);
 
-      // this size request bounds the click/mouse intercept region of the widget.
-      // without it, it blocks clicks even though it doesn't block the window from drawing in the window management
-      gtk_window
-        .set_size_request(coords.size.width, coords.size.height);
+      // this size request bounds the click/mouse intercept region of the
+      // widget. without it, it blocks clicks even though it doesn't
+      // block the window from drawing in the window management
+      gtk_window.set_size_request(coords.size.width, coords.size.height);
 
-      // explicit monitor placement is required when using layer shell placement - absolute coordinates don't work
+      // explicit monitor placement is required when using layer shell
+      // placement - absolute coordinates don't work
       if let Some(display) = gdk::Display::default() {
-        if let Some(monitor) = display
-          .monitor_at_point(coords.position.x, coords.position.y) {
+        if let Some(monitor) =
+          display.monitor_at_point(coords.position.x, coords.position.y)
+        {
           gtk_window.set_monitor(&monitor);
         }
       };
