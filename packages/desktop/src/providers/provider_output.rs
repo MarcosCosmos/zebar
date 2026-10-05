@@ -13,6 +13,8 @@ use super::{
   network::NetworkOutput, weather::WeatherOutput,
 };
 
+use crate::providers::self_managed_provider::{ProviderOutput as SMProviderOutput};
+
 /// Implements `From<T>` for `ProviderOutput` for each given variant.
 macro_rules! impl_provider_output {
   ($($variant:ident($type:ty)),* $(,)?) => {
@@ -47,6 +49,7 @@ pub enum ProviderOutput {
   Weather(WeatherOutput),
   #[cfg(windows)]
   Keyboard(KeyboardOutput),
+  SelfManaged(SMProviderOutput),
 }
 
 impl_provider_output! {
@@ -57,7 +60,8 @@ impl_provider_output! {
   Memory(MemoryOutput),
   Disk(DiskOutput),
   Network(NetworkOutput),
-  Weather(WeatherOutput)
+  Weather(WeatherOutput),
+  SelfManaged(SMProviderOutput),
 }
 
 #[cfg(target_os = "macos")]

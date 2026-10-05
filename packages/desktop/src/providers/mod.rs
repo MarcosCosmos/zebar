@@ -21,6 +21,7 @@ mod provider_output;
 #[cfg(windows)]
 mod systray;
 mod weather;
+mod self_managed_provider;
 
 pub use provider::*;
 pub use provider_config::*;
