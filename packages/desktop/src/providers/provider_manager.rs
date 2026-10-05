@@ -8,7 +8,7 @@ use tokio::{
   task,
 };
 use tracing::info;
-use crate::providers::self_managed_provider::{spawn_managed, AsyncSpawn, CommonAsyncProviderState, CommonSyncProviderState, SyncSpawn};
+
 #[cfg(any(target_os = "macos", windows))]
 use super::komorebi::KomorebiProvider;
 #[cfg(windows)]
@@ -22,6 +22,10 @@ use super::{
   network::NetworkProvider, weather::WeatherProvider, Provider,
   ProviderConfig, ProviderFunction, ProviderFunctionResponse,
   ProviderFunctionResult, ProviderOutput, RuntimeType,
+};
+use crate::providers::self_managed_provider::{
+  spawn_managed, AsyncSpawn, CommonAsyncProviderState,
+  CommonSyncProviderState, SyncSpawn,
 };
 
 /// Common fields for a provider.
@@ -55,13 +59,13 @@ pub enum ProviderInputMsg {
 #[derive(Clone, Debug)]
 pub struct ProviderEmitter {
   /// Sender channel for outgoing provider emissions.
-  emit_tx: mpsc::UnboundedSender<ProviderEmission>,
+  pub emit_tx: mpsc::UnboundedSender<ProviderEmission>,
 
   /// Hash of the provider's config.
-  config_hash: String,
+  pub config_hash: String,
 
   /// Previous emission from the provider.
-  prev_emission: Option<ProviderEmission>,
+  pub prev_emission: Option<ProviderEmission>,
 }
 
 impl ProviderEmitter {
@@ -117,7 +121,7 @@ pub struct ProviderEmission {
   pub result: Result<ProviderOutput, String>,
 }
 
-enum ProviderSender {
+pub(crate) enum ProviderSender {
   Sync(crossbeam::channel::Sender<ProviderInputMsg>),
   Async(mpsc::Sender<ProviderInputMsg>),
 }
@@ -125,10 +129,10 @@ enum ProviderSender {
 /// Reference to an active provider.
 pub struct ProviderRef {
   /// Sender channel for sending inputs to the provider.
-  input_tx: ProviderSender,
+  pub(crate) input_tx: ProviderSender,
 
   /// Handle to the provider's task.
-  task_handle: task::JoinHandle<()>,
+  pub(crate) task_handle: task::JoinHandle<()>,
 }
 
 /// Manages the creation and cleanup of providers.
@@ -143,10 +147,10 @@ pub struct ProviderManager {
   emit_cache: Arc<Mutex<HashMap<String, ProviderEmission>>>,
 
   /// Sender channel for provider emissions.
-  emit_tx: mpsc::UnboundedSender<ProviderEmission>,
+  pub emit_tx: mpsc::UnboundedSender<ProviderEmission>,
 
   /// Shared `sysinfo` instance.
-  sysinfo: Arc<Mutex<sysinfo::System>>,
+  pub sysinfo: Arc<Mutex<sysinfo::System>>,
 }
 
 impl ProviderManager {
@@ -206,32 +210,34 @@ impl ProviderManager {
     }
 
     tracing::info!("Creating provider: {}", config_hash);
-
-    let (async_input_tx, async_input_rx) = mpsc::channel(1);
-    let (sync_input_tx, sync_input_rx) = crossbeam::channel::bounded(1);
-
-    let common = CommonProviderState {
-      input: ProviderInput {
-        async_rx: async_input_rx,
-        sync_rx: sync_input_rx,
-      },
-      emitter: ProviderEmitter {
-        emit_tx: self.emit_tx.clone(),
-        config_hash: config_hash.clone(),
-        prev_emission: None,
-      },
-      sysinfo: self.sysinfo.clone(),
-    };
-
     let provider_ref = match config {
       ProviderConfig::SelfManaged(c) => {
-        spawn_managed(config_hash.clone(), c, &self).await?
-      },
+        spawn_managed(config_hash.clone(), c, self).await?
+      }
       _ => {
+        let (async_input_tx, async_input_rx) = mpsc::channel(1);
+        let (sync_input_tx, sync_input_rx) =
+          crossbeam::channel::bounded(1);
+
+        let common = CommonProviderState {
+          input: ProviderInput {
+            async_rx: async_input_rx,
+            sync_rx: sync_input_rx,
+          },
+          emitter: ProviderEmitter {
+            emit_tx: self.emit_tx.clone(),
+            config_hash: config_hash.clone(),
+            prev_emission: None,
+          },
+          sysinfo: self.sysinfo.clone(),
+        };
+
         let (task_handle, runtime_type) =
           self.create_instance(config, config_hash.clone(), common)?;
 
-        // note: by dropping the senders, we ensure that trying to read from the wrong rx which cause errors and not silently fail. Should help migrate to self-managed.
+        // note: by dropping the senders, we ensure that trying to read
+        // from the wrong rx which cause errors and not silently fail.
+        // Should help migrate to self-managed.
         ProviderRef {
           input_tx: match runtime_type {
             RuntimeType::Sync => ProviderSender::Sync(sync_input_tx),
@@ -243,53 +249,6 @@ impl ProviderManager {
     };
     provider_refs.insert(config_hash, provider_ref);
     Ok(())
-  }
-
-  pub async fn spawn_sync<T>(&self, config_hash: String, config: T::Config) -> anyhow::Result<ProviderRef> where T : SyncSpawn + ?Sized, T::Config: 'static + Send
-  {
-    let (input_tx, input_rx) = crossbeam::channel::bounded::<ProviderInputMsg>(1);
-
-    let common = CommonSyncProviderState {
-      input_rx,
-      emitter: ProviderEmitter {
-        emit_tx: self.emit_tx.clone(),
-        config_hash: config_hash.clone(),
-        prev_emission: None,
-      },
-      sysinfo: self.sysinfo.clone(),
-    };
-
-    let task_handle = task::spawn_blocking(move || {
-      T::spawn(config, common);
-      info!("Provider stopped: {}", config_hash);
-    });
-    Ok(ProviderRef {
-      input_tx: ProviderSender::Sync(input_tx),
-      task_handle,
-    })
-  }
-
-  pub async fn spawn_async<T>(&self, config_hash: String, config: T::Config) -> anyhow::Result<ProviderRef> where T : AsyncSpawn + ?Sized, T::Config: 'static + Send {
-    let (input_tx, input_rx) = mpsc::channel::<ProviderInputMsg>(1);
-
-    let common = CommonAsyncProviderState {
-      input_rx,
-      emitter: ProviderEmitter {
-        emit_tx: self.emit_tx.clone(),
-        config_hash: config_hash.clone(),
-        prev_emission: None,
-      },
-      sysinfo: self.sysinfo.clone(),
-    };
-
-    let task_handle = task::spawn(async move {
-      T::spawn(config, common).await;
-      info!("Provider stopped: {}", config_hash);
-    });
-    Ok(ProviderRef {
-      input_tx: ProviderSender::Async(input_tx),
-      task_handle,
-    })
   }
 
   /// Creates a new provider instance.
@@ -414,7 +373,7 @@ impl ProviderManager {
           .send(ProviderInputMsg::Function(function, tx))
           .await
           .context("Failed to send function call to provider.")?;
-      },
+      }
       ProviderSender::Sync(ref input_tx) => {
         input_tx
           .send(ProviderInputMsg::Function(function, tx))

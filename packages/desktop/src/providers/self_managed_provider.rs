@@ -1,9 +1,15 @@
-use std::future::Future;
-use std::marker::PhantomData;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use crate::providers::{ProviderEmitter, ProviderInputMsg, ProviderManager, ProviderRef};
+use std::{future::Future, marker::PhantomData, sync::Arc};
+
 use serde::{Deserialize, Serialize};
+use tokio::{
+  sync::{mpsc, Mutex},
+  task,
+};
+
+use crate::providers::{
+  ProviderEmitter, ProviderInputMsg, ProviderManager, ProviderRef,
+  ProviderSender,
+};
 
 pub trait Provider {
   type Config;
@@ -12,26 +18,81 @@ pub trait Provider {
 }
 
 pub trait SyncSpawn: Provider {
-  fn spawn(config: Self::Config, common: CommonSyncProviderState);
+  fn spawn(
+    config: Self::Config,
+    common: CommonSyncProviderState,
+  );
 
-  async fn spawn_managed(config_hash: String, config: Self::Config, provider_manager: &ProviderManager) -> anyhow::Result<ProviderRef> where <Self as Provider>::Config: 'static + Send {
-    provider_manager.spawn_sync::<Self>(config_hash, config).await
+  async fn spawn_managed(
+    config_hash: String,
+    config: Self::Config,
+    provider_manager: &ProviderManager,
+  ) -> anyhow::Result<ProviderRef>
+  where
+    <Self as Provider>::Config: 'static + Send,
+  {
+    let (input_tx, input_rx) =
+      crossbeam::channel::bounded::<ProviderInputMsg>(1);
+
+    let common = CommonSyncProviderState {
+      input_rx,
+      emitter: ProviderEmitter {
+        emit_tx: provider_manager.emit_tx.clone(),
+        config_hash: config_hash.clone(),
+        prev_emission: None,
+      },
+      sysinfo: provider_manager.sysinfo.clone(),
+    };
+
+    let task_handle = task::spawn_blocking(move || {
+      Self::spawn(config, common);
+      tracing::info!("Provider stopped: {}", config_hash);
+    });
+    Ok(ProviderRef {
+      input_tx: crate::providers::provider_manager::ProviderSender::Sync(
+        input_tx,
+      ),
+      task_handle,
+    })
   }
 }
 
 pub trait AsyncSpawn: Provider {
   #[allow(refining_impl_trait)]
-  fn spawn(config: Self::Config, common: CommonAsyncProviderState) -> impl Future + Send;
+  fn spawn(
+    config: Self::Config,
+    common: CommonAsyncProviderState,
+  ) -> impl Future + Send;
 
-  async fn spawn_managed(config_hash: String, config: Self::Config, provider_manager: &ProviderManager) -> anyhow::Result<ProviderRef> where <Self as Provider>::Config: 'static + Send {
-    provider_manager.spawn_async::<Self>(config_hash, config).await
+  async fn spawn_managed(
+    config_hash: String,
+    config: Self::Config,
+    provider_manager: &ProviderManager,
+  ) -> anyhow::Result<ProviderRef>
+  where
+    <Self as Provider>::Config: 'static + Send,
+  {
+    let (input_tx, input_rx) = mpsc::channel::<ProviderInputMsg>(1);
+
+    let common = CommonAsyncProviderState {
+      input_rx,
+      emitter: ProviderEmitter {
+        emit_tx: provider_manager.emit_tx.clone(),
+        config_hash: config_hash.clone(),
+        prev_emission: None,
+      },
+      sysinfo: provider_manager.sysinfo.clone(),
+    };
+
+    let task_handle = task::spawn(async move {
+      Self::spawn(config, common).await;
+      tracing::info!("Provider stopped: {}", config_hash);
+    });
+    Ok(ProviderRef {
+      input_tx: ProviderSender::Async(input_tx),
+      task_handle,
+    })
   }
-}
-
-/// an enum with no variants creates no-op logic, and is currently used in place of the eventual ! never type
-/// To be used as filler for function and output on providers that have no such thing
-#[derive(Deserialize, Debug)]
-pub enum ProviderVoid {
 }
 
 pub struct CommonProviderState<T> {
@@ -44,9 +105,10 @@ pub struct CommonProviderState<T> {
   /// Shared `sysinfo` instance.
   pub sysinfo: Arc<Mutex<sysinfo::System>>,
 }
-pub type CommonSyncProviderState = CommonProviderState<crossbeam::channel::Receiver<ProviderInputMsg>>;
-pub type CommonAsyncProviderState = CommonProviderState<mpsc::Receiver<ProviderInputMsg>>;
-
+pub type CommonSyncProviderState =
+  CommonProviderState<crossbeam::channel::Receiver<ProviderInputMsg>>;
+pub type CommonAsyncProviderState =
+  CommonProviderState<mpsc::Receiver<ProviderInputMsg>>;
 
 macro_rules! build_enum {
     ($name:ident{$($body:tt)*}) => {
@@ -72,7 +134,6 @@ macro_rules! build_enum {
     };
 }
 
-
 macro_rules! declare_provider_set {
     ($($provider:ident),+) => {
       // build_enum!(SelfManagedProviders{} $(more),+);
@@ -89,20 +150,15 @@ macro_rules! declare_provider_set {
     };
 }
 
+pub struct TestSyncProvider {}
 
-pub struct TestSyncProvider {
-}
-
-pub struct TestAsyncProvider {
-}
+pub struct TestAsyncProvider {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TestSyncProviderConfig();
 
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TestAsyncProviderConfig();
-
 
 impl Provider for TestAsyncProvider {
   type Config = TestAsyncProviderConfig;
@@ -127,6 +183,5 @@ impl SyncSpawn for TestSyncProvider {
     todo!()
   }
 }
-
 
 declare_provider_set!(TestSyncProvider, TestAsyncProvider);

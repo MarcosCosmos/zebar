@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::providers::self_managed_provider::{ProviderFunction as SMProviderFunction};
+use crate::providers::self_managed_provider::ProviderFunction as SMProviderFunction;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "function", rename_all = "snake_case")]
 pub enum ProviderFunction {
   Audio(AudioFunction),
   Media(MediaFunction),
   Systray(SystrayFunction),
-  SelfManaged(SMProviderFunction)
+  SelfManaged(SMProviderFunction),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

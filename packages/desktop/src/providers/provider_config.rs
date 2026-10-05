@@ -1,4 +1,5 @@
 use serde::Deserialize;
+
 #[cfg(any(target_os = "macos", windows))]
 use super::komorebi::KomorebiProviderConfig;
 #[cfg(windows)]
@@ -12,7 +13,7 @@ use super::{
   ip::IpProviderConfig, memory::MemoryProviderConfig,
   network::NetworkProviderConfig, weather::WeatherProviderConfig,
 };
-use crate::providers::self_managed_provider::{ProviderConfig as SMProviderConfig};
+use crate::providers::self_managed_provider::ProviderConfig as SMProviderConfig;
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]

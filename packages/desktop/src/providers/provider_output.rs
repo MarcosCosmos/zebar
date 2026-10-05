@@ -12,8 +12,7 @@ use super::{
   host::HostOutput, ip::IpOutput, memory::MemoryOutput,
   network::NetworkOutput, weather::WeatherOutput,
 };
-
-use crate::providers::self_managed_provider::{ProviderOutput as SMProviderOutput};
+use crate::providers::self_managed_provider::ProviderOutput as SMProviderOutput;
 
 /// Implements `From<T>` for `ProviderOutput` for each given variant.
 macro_rules! impl_provider_output {
