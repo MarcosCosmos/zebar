@@ -49,7 +49,7 @@ pub trait SyncSpawn: Provider {
       tracing::info!("Provider stopped: {}", config_hash);
     });
     Ok(ProviderRef {
-      input_tx: crate::providers::provider_manager::ProviderSender::Sync(
+      input_tx: ProviderSender::Sync(
         input_tx,
       ),
       task_handle,
