@@ -23,10 +23,7 @@ use super::{
   ProviderConfig, ProviderFunction, ProviderFunctionResponse,
   ProviderFunctionResult, ProviderOutput, RuntimeType,
 };
-use crate::providers::self_managed_provider::{
-  spawn_managed, AsyncSpawn, CommonAsyncProviderState,
-  CommonSyncProviderState, SyncSpawn,
-};
+use crate::providers::self_managed_provider::{call_function, spawn_managed, stop, ProviderSender as SMProviderSender};
 
 /// Common fields for a provider.
 pub struct CommonProviderState {
@@ -121,9 +118,10 @@ pub struct ProviderEmission {
   pub result: Result<ProviderOutput, String>,
 }
 
-pub(crate) enum ProviderSender {
+pub enum ProviderSender {
   Sync(crossbeam::channel::Sender<ProviderInputMsg>),
   Async(mpsc::Sender<ProviderInputMsg>),
+  SelfManaged(SMProviderSender)
 }
 
 /// Reference to an active provider.
@@ -212,7 +210,7 @@ impl ProviderManager {
     tracing::info!("Creating provider: {}", config_hash);
     let provider_ref = match config {
       ProviderConfig::SelfManaged(c) => {
-        spawn_managed(config_hash.clone(), c, self).await?
+        spawn_managed(config_hash.clone(), c, self)?
       }
       _ => {
         let (async_input_tx, async_input_rx) = mpsc::channel(1);
@@ -372,14 +370,19 @@ impl ProviderManager {
         input_tx
           .send(ProviderInputMsg::Function(function, tx))
           .await
-          .context("Failed to send function call to provider.")?;
+          .map_err(|err|err.into())
       }
       ProviderSender::Sync(ref input_tx) => {
         input_tx
           .send(ProviderInputMsg::Function(function, tx))
-          .context("Failed to send function call to provider.")?;
+          .map_err(|err|err.into())
+      }
+      ProviderSender::SelfManaged(ref sender) => {
+        call_function(sender, function, tx).await
       }
     }
+      .context("Failed to send function call to provider.")?
+      ;
 
     rx.await?.map_err(anyhow::Error::msg)
   }
@@ -406,14 +409,18 @@ impl ProviderManager {
         input_tx
           .send(ProviderInputMsg::Stop)
           .await
-          .context("Failed to send shutdown signal to provider.")?;
-      }
+          .map_err(|err|err.into())
+      },
       ProviderSender::Sync(ref input_tx) => {
         input_tx
           .send(ProviderInputMsg::Stop)
-          .context("Failed to send shutdown signal to provider.")?;
+          .map_err(|err|err.into())
+      },
+      ProviderSender::SelfManaged(ref sender) => {
+        stop(sender).await
       }
     }
+      .context("Failed to send shutdown signal to provider.")?;
 
     // Wait for the provider to stop.
     provider_ref.task_handle.await?;
