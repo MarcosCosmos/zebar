@@ -24,7 +24,7 @@ use super::{
   ProviderFunctionResult, ProviderOutput, RuntimeType,
 };
 use crate::providers::self_managed_provider::{
-  call_function, spawn_managed, stop,
+  call_function, spawn_provider, stop,
   CommonProviderState as SMCommonProviderState,
   ProviderSender as SMProviderSender,
 };
@@ -214,7 +214,7 @@ impl ProviderManager {
     tracing::info!("Creating provider: {}", config_hash);
     let provider_ref = match config {
       ProviderConfig::SelfManaged(c) => {
-        spawn_managed(config_hash.clone(), c, self)?
+        spawn_provider(config_hash.clone(), c, self)?
       }
       _ => {
         let (async_input_tx, async_input_rx) = mpsc::channel(1);

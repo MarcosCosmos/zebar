@@ -1,8 +1,9 @@
 use std::{future::Future, marker::PhantomData, sync::Arc};
 
+use crossbeam::channel as cb_mpsc;
 use serde::{Deserialize, Serialize};
 use tokio::{
-  sync::{oneshot, Mutex},
+  sync::{mpsc as tk_mpsc, oneshot, Mutex},
   task,
 };
 
@@ -11,6 +12,7 @@ use crate::providers::{
   ProviderFunctionResult, ProviderManager, ProviderRef,
   ProviderSender as OldSender,
 };
+
 pub trait Provider {
   type Config;
   type Output;
@@ -23,75 +25,6 @@ pub enum ProviderInputMsg<T> {
   Stop,
 }
 
-pub trait SyncProvider: Provider
-where
-  ProviderSender:
-    From<crossbeam::channel::Sender<ProviderInputMsg<Self::Function>>>,
-  Self::Config: 'static + Send,
-  <Self as Provider>::Function: 'static + Send,
-{
-  fn spawn(
-    config: Self::Config,
-    common: CommonProviderState<
-      crossbeam::channel::Receiver<ProviderInputMsg<Self::Function>>,
-    >,
-  );
-  fn spawn_managed(
-    config_hash: String,
-    config: Self::Config,
-    provider_manager: &ProviderManager,
-  ) -> anyhow::Result<ProviderRef> {
-    let (input_tx, input_rx) = crossbeam::channel::bounded(1);
-
-    let common =
-      provider_manager.create_common_state(config_hash.clone(), input_rx);
-
-    let task_handle = task::spawn_blocking(move || {
-      Self::spawn(config, common);
-      tracing::info!("Provider stopped: {}", config_hash);
-    });
-    Ok(ProviderRef {
-      input_tx: OldSender::SelfManaged(input_tx.into()),
-      task_handle,
-    })
-  }
-}
-
-pub trait AsyncProvider: Provider
-where
-  ProviderSender:
-    From<tokio::sync::mpsc::Sender<ProviderInputMsg<Self::Function>>>,
-  Self::Config: 'static + Send,
-  <Self as Provider>::Function: 'static + Send,
-{
-  fn spawn(
-    config: Self::Config,
-    common: CommonProviderState<
-      tokio::sync::mpsc::Receiver<ProviderInputMsg<Self::Function>>,
-    >,
-  ) -> impl Future + Send;
-
-  fn spawn_managed(
-    config_hash: String,
-    config: Self::Config,
-    provider_manager: &ProviderManager,
-  ) -> anyhow::Result<ProviderRef> {
-    let (input_tx, input_rx) = tokio::sync::mpsc::channel(1);
-
-    let common =
-      provider_manager.create_common_state(config_hash.clone(), input_rx);
-
-    let task_handle = task::spawn(async move {
-      Self::spawn(config, common).await;
-      tracing::info!("Provider stopped: {}", config_hash);
-    });
-    Ok(ProviderRef {
-      input_tx: OldSender::SelfManaged(input_tx.into()),
-      task_handle,
-    })
-  }
-}
-
 pub struct CommonProviderState<T> {
   pub emitter: ProviderEmitter,
 
@@ -101,6 +34,72 @@ pub struct CommonProviderState<T> {
 
   /// Shared `sysinfo` instance.
   pub sysinfo: Arc<Mutex<sysinfo::System>>,
+}
+
+pub trait SyncProvider: Provider {
+  fn spawn(
+    config: Self::Config,
+    common: CommonProviderState<
+      cb_mpsc::Receiver<ProviderInputMsg<Self::Function>>,
+    >,
+  );
+}
+
+pub trait AsyncProvider: Provider {
+  fn spawn(
+    config: Self::Config,
+    common: CommonProviderState<
+      tk_mpsc::Receiver<ProviderInputMsg<Self::Function>>,
+    >,
+  ) -> impl Future + Send;
+}
+
+fn spawn_sync<T>(
+  config_hash: String,
+  config: T::Config,
+  manager: &ProviderManager,
+) -> anyhow::Result<ProviderRef>
+where
+  T: SyncProvider,
+  ProviderSender: From<cb_mpsc::Sender<ProviderInputMsg<T::Function>>>,
+  T::Config: 'static + Send,
+  T::Function: 'static + Send,
+{
+  let (input_tx, input_rx) = cb_mpsc::bounded(1);
+  let common = manager.create_common_state(config_hash.clone(), input_rx);
+  let task_handle = task::spawn_blocking(move || {
+    T::spawn(config, common);
+    tracing::info!("Provider stopped: {}", config_hash);
+  });
+
+  Ok(ProviderRef {
+    input_tx: OldSender::SelfManaged(input_tx.into()),
+    task_handle,
+  })
+}
+
+fn spawn_async<T>(
+  config_hash: String,
+  config: T::Config,
+  manager: &ProviderManager,
+) -> anyhow::Result<ProviderRef>
+where
+  T: AsyncProvider,
+  ProviderSender: From<tk_mpsc::Sender<ProviderInputMsg<T::Function>>>,
+  T::Config: 'static + Send,
+  T::Function: 'static + Send,
+{
+  let (input_tx, input_rx) = tk_mpsc::channel(1);
+  let common = manager.create_common_state(config_hash.clone(), input_rx);
+  let task_handle = task::spawn(async move {
+    T::spawn(config, common).await;
+    tracing::info!("Provider stopped: {}", config_hash);
+  });
+
+  Ok(ProviderRef {
+    input_tx: OldSender::SelfManaged(input_tx.into()),
+    task_handle,
+  })
 }
 
 macro_rules! build_enum {
@@ -122,7 +121,6 @@ macro_rules! build_enum {
 
 macro_rules! declare_provider_set {
     (sync[$($sync_provider:ident),+] async[$($async_provider:ident),+]) => {
-      // build_enum!(SelfManagedProviders{} $(more),+);
       build_enum!(
         [derive(Deserialize, Debug)]
         [serde(tag = "type", rename_all = "snake_case")]
@@ -131,6 +129,7 @@ macro_rules! declare_provider_set {
           $($async_provider: <$async_provider as Provider>::Config),+
         }
       );
+
       build_enum!(
         [derive(Debug, Clone, PartialEq, Serialize)]
         [serde(untagged)]
@@ -139,6 +138,7 @@ macro_rules! declare_provider_set {
           $($async_provider: <$async_provider as Provider>::Output),+
         }
       );
+
       build_enum!(
         [derive(Debug, Clone, Serialize, Deserialize)]
         [serde(tag = "type", content = "function", rename_all = "snake_case")]
@@ -147,6 +147,7 @@ macro_rules! declare_provider_set {
           $($async_provider: <$async_provider as Provider>::Function),+
         }
       );
+
       build_enum!(
         [derive(Debug, Clone, Serialize)]
         [serde(untagged)]
@@ -155,33 +156,41 @@ macro_rules! declare_provider_set {
           $($async_provider: <$async_provider as Provider>::Response),+
         }
       );
+
       build_enum!(
         ProviderSender{
-          $($sync_provider: crossbeam::channel::Sender<ProviderInputMsg<<$sync_provider as Provider>::Function>>),+;
-          $($async_provider: tokio::sync::mpsc::Sender<ProviderInputMsg<<$async_provider as Provider>::Function>>),+
+          $($sync_provider: cb_mpsc::Sender<ProviderInputMsg<<$sync_provider as Provider>::Function>>),+;
+          $($async_provider: tk_mpsc::Sender<ProviderInputMsg<<$async_provider as Provider>::Function>>),+
        }
       );
-      pub fn spawn_managed(config_hash: String, config: ProviderConfig, provider_manager: &ProviderManager) -> anyhow::Result<ProviderRef> {
+
+      pub fn spawn_provider(config_hash: String, config: ProviderConfig, provider_manager: &ProviderManager) -> anyhow::Result<ProviderRef> {
         match config {
           $(
-            ProviderConfig::$sync_provider(inner) => $sync_provider::spawn_managed(config_hash, inner, provider_manager),
+            ProviderConfig::$sync_provider(inner) => spawn_sync::<$sync_provider>(config_hash, inner, provider_manager),
           )+
           $(
-            ProviderConfig::$async_provider(inner) => $async_provider::spawn_managed(config_hash, inner, provider_manager),
+            ProviderConfig::$async_provider(inner) => spawn_async::<$async_provider>(config_hash, inner, provider_manager),
           )+
         }
       }
+
       pub async fn call_function(sender: &ProviderSender, f: OldFunction, response_tx: oneshot::Sender<ProviderFunctionResult>) -> anyhow::Result<()> {
         match (sender, f) {
           $(
-            (ProviderSender::$sync_provider(ref tx),  OldFunction::SelfManaged(ProviderFunction::$sync_provider(_f))) => tx.send(ProviderInputMsg::Function(_f, response_tx)).map_err(|err|err.into()),
+            (ProviderSender::$sync_provider(ref tx), OldFunction::SelfManaged(ProviderFunction::$sync_provider(_f))) => {
+              tx.send(ProviderInputMsg::Function(_f, response_tx)).map_err(|err|err.into())
+            },
           )+
           $(
-            (ProviderSender::$async_provider(ref tx),  OldFunction::SelfManaged(ProviderFunction::$async_provider(_f))) => tx.send(ProviderInputMsg::Function(_f, response_tx)).await.map_err(|err|err.into()),
+            (ProviderSender::$async_provider(ref tx), OldFunction::SelfManaged(ProviderFunction::$async_provider(_f))) => {
+              tx.send(ProviderInputMsg::Function(_f, response_tx)).await.map_err(|err|err.into())
+            },
           )+
           _ => panic!("Sender type did not match function type"),
         }
       }
+
       pub async fn stop(sender: &ProviderSender) -> anyhow::Result<()> {
         match (sender) {
           $(
@@ -214,9 +223,7 @@ impl SyncProvider for TestSyncProvider {
   fn spawn(
     config: <Self as Provider>::Config,
     common: CommonProviderState<
-      crossbeam::channel::Receiver<
-        ProviderInputMsg<<Self as Provider>::Function>,
-      >,
+      cb_mpsc::Receiver<ProviderInputMsg<<Self as Provider>::Function>>,
     >,
   ) {
     todo!()
@@ -242,9 +249,7 @@ impl AsyncProvider for TestAsyncProvider {
   async fn spawn(
     config: <Self as Provider>::Config,
     common: CommonProviderState<
-      tokio::sync::mpsc::Receiver<
-        ProviderInputMsg<<Self as Provider>::Function>,
-      >,
+      tk_mpsc::Receiver<ProviderInputMsg<<Self as Provider>::Function>>,
     >,
   ) {
     todo!()
