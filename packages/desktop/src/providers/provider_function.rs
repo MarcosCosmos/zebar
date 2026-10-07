@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::providers::self_managed_provider::{ProviderFunction as SMProviderFunction, ProviderResponse};
+use crate::providers::self_managed_provider::{
+  ProviderFunction as SMProviderFunction, ProviderResponse,
+};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "function", rename_all = "snake_case")]
 pub enum ProviderFunction {

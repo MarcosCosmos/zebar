@@ -1,11 +1,16 @@
 use std::{future::Future, marker::PhantomData, sync::Arc};
+
 use serde::{Deserialize, Serialize};
 use tokio::{
-  sync::Mutex,
+  sync::{oneshot, Mutex},
   task,
 };
-use tokio::sync::oneshot;
-use crate::providers::{ProviderEmitter, ProviderFunction as OldFunction, ProviderFunctionResult, ProviderManager, ProviderRef, ProviderSender as OldSender};
+
+use crate::providers::{
+  ProviderEmitter, ProviderFunction as OldFunction,
+  ProviderFunctionResult, ProviderManager, ProviderRef,
+  ProviderSender as OldSender,
+};
 pub trait Provider {
   type Config;
   type Output;
@@ -18,21 +23,28 @@ pub enum ProviderInputMsg<T> {
   Stop,
 }
 
-pub trait SyncProvider: Provider where ProviderSender: From<crossbeam::channel::Sender<ProviderInputMsg<Self::Function>>>, Self::Config: 'static + Send, <Self as Provider>::Function: 'static + Send {
+pub trait SyncProvider: Provider
+where
+  ProviderSender:
+    From<crossbeam::channel::Sender<ProviderInputMsg<Self::Function>>>,
+  Self::Config: 'static + Send,
+  <Self as Provider>::Function: 'static + Send,
+{
   fn spawn(
     config: Self::Config,
-    common: CommonProviderState<crossbeam::channel::Receiver<ProviderInputMsg<Self::Function>>>,
+    common: CommonProviderState<
+      crossbeam::channel::Receiver<ProviderInputMsg<Self::Function>>,
+    >,
   );
   fn spawn_managed(
     config_hash: String,
     config: Self::Config,
     provider_manager: &ProviderManager,
-  ) -> anyhow::Result<ProviderRef>
-  {
-    let (input_tx, input_rx) =
-      crossbeam::channel::bounded(1);
+  ) -> anyhow::Result<ProviderRef> {
+    let (input_tx, input_rx) = crossbeam::channel::bounded(1);
 
-    let common = provider_manager.create_common_state(config_hash.clone(), input_rx);
+    let common =
+      provider_manager.create_common_state(config_hash.clone(), input_rx);
 
     let task_handle = task::spawn_blocking(move || {
       Self::spawn(config, common);
@@ -45,22 +57,29 @@ pub trait SyncProvider: Provider where ProviderSender: From<crossbeam::channel::
   }
 }
 
-pub trait AsyncProvider: Provider where ProviderSender: From<tokio::sync::mpsc::Sender<ProviderInputMsg<Self::Function>>>, Self::Config: 'static + Send, <Self as Provider>::Function: 'static + Send,
+pub trait AsyncProvider: Provider
+where
+  ProviderSender:
+    From<tokio::sync::mpsc::Sender<ProviderInputMsg<Self::Function>>>,
+  Self::Config: 'static + Send,
+  <Self as Provider>::Function: 'static + Send,
 {
   fn spawn(
     config: Self::Config,
-    common: CommonProviderState<tokio::sync::mpsc::Receiver<ProviderInputMsg<Self::Function>>>
+    common: CommonProviderState<
+      tokio::sync::mpsc::Receiver<ProviderInputMsg<Self::Function>>,
+    >,
   ) -> impl Future + Send;
 
   fn spawn_managed(
     config_hash: String,
     config: Self::Config,
     provider_manager: &ProviderManager,
-  ) -> anyhow::Result<ProviderRef>
-  {
+  ) -> anyhow::Result<ProviderRef> {
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(1);
 
-    let common = provider_manager.create_common_state(config_hash.clone(), input_rx);
+    let common =
+      provider_manager.create_common_state(config_hash.clone(), input_rx);
 
     let task_handle = task::spawn(async move {
       Self::spawn(config, common).await;
@@ -192,14 +211,19 @@ impl Provider for TestSyncProvider {
 }
 
 impl SyncProvider for TestSyncProvider {
-  fn spawn(config: <Self as Provider>::Config, common: CommonProviderState<crossbeam::channel::Receiver<ProviderInputMsg<<Self as Provider>::Function>>>) {
+  fn spawn(
+    config: <Self as Provider>::Config,
+    common: CommonProviderState<
+      crossbeam::channel::Receiver<
+        ProviderInputMsg<<Self as Provider>::Function>,
+      >,
+    >,
+  ) {
     todo!()
   }
 }
 
-
 pub struct TestAsyncProvider {}
-
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TestAsyncProviderConfig();
@@ -212,11 +236,17 @@ impl Provider for TestAsyncProvider {
   type Output = TestAsyncProviderOutput;
   type Function = PhantomData<Self>;
   type Response = PhantomData<Self>;
-
 }
 
 impl AsyncProvider for TestAsyncProvider {
-  async fn spawn(config: <Self as Provider>::Config, common: CommonProviderState<tokio::sync::mpsc::Receiver<ProviderInputMsg<<Self as Provider>::Function>>>) {
+  async fn spawn(
+    config: <Self as Provider>::Config,
+    common: CommonProviderState<
+      tokio::sync::mpsc::Receiver<
+        ProviderInputMsg<<Self as Provider>::Function>,
+      >,
+    >,
+  ) {
     todo!()
   }
 }
