@@ -8,7 +8,7 @@ use tokio::{
 };
 
 use crate::providers::{
-  ProviderEmitter, ProviderFunction as OldFunction,
+  ProviderEmitter,
   ProviderFunctionResult, ProviderManager, ProviderRef,
   ProviderSender as OldSender,
 };
@@ -99,9 +99,8 @@ where
 }
 
 macro_rules! build_enum {
-    ($([$($mac:tt)+])* $name:ident{$($($provider:ident: $value_type:ty),+);+}) => {
-      $(#[$($mac)+]
-      )*
+    ($([$($mac:tt)+])* $name:ident{$($($provider:ident($value_type:ty)),+);+}) => {
+      $(#[$($mac)+])*
       pub enum $name{
         $($($provider($value_type),)+)+
       }
@@ -120,43 +119,43 @@ macro_rules! declare_provider_set {
       build_enum!(
         [derive(Deserialize, Debug)]
         [serde(tag = "type", rename_all = "snake_case")]
-        ProviderConfig{
-          $($sync_provider: <$sync_provider as Provider>::Config),+;
-          $($async_provider: <$async_provider as Provider>::Config),+
+        ProviderConfig {
+          $($sync_provider(<$sync_provider as Provider>::Config)),+;
+          $($async_provider(<$async_provider as Provider>::Config)),+
         }
       );
 
       build_enum!(
         [derive(Debug, Clone, PartialEq, Serialize)]
         [serde(untagged)]
-        ProviderOutput{
-          $($sync_provider: <$sync_provider as Provider>::Output),+;
-          $($async_provider: <$async_provider as Provider>::Output),+
+        ProviderOutput {
+          $($sync_provider(<$sync_provider as Provider>::Output)),+;
+          $($async_provider(<$async_provider as Provider>::Output)),+
         }
       );
 
       build_enum!(
         [derive(Debug, Clone, Serialize, Deserialize)]
         [serde(tag = "type", content = "function", rename_all = "snake_case")]
-        ProviderFunction{
-          $($sync_provider: <$sync_provider as Provider>::Function),+;
-          $($async_provider: <$async_provider as Provider>::Function),+
+        ProviderFunction {
+          $($sync_provider(<$sync_provider as Provider>::Function)),+;
+          $($async_provider(<$async_provider as Provider>::Function)),+
         }
       );
 
       build_enum!(
         [derive(Debug, Clone, Serialize)]
         [serde(untagged)]
-        ProviderResponse{
-          $($sync_provider: <$sync_provider as Provider>::Response),+;
-          $($async_provider: <$async_provider as Provider>::Response),+
+        ProviderResponse {
+          $($sync_provider(<$sync_provider as Provider>::Response)),+;
+          $($async_provider(<$async_provider as Provider>::Response)),+
         }
       );
 
       build_enum!(
-        ProviderSender{
-          $($sync_provider: cb_mpsc::Sender<ProviderInputMsg<<$sync_provider as Provider>::Function>>),+;
-          $($async_provider: tk_mpsc::Sender<ProviderInputMsg<<$async_provider as Provider>::Function>>),+
+        ProviderSender {
+          $($sync_provider(cb_mpsc::Sender<ProviderInputMsg<<$sync_provider as Provider>::Function>>)),+;
+          $($async_provider(tk_mpsc::Sender<ProviderInputMsg<<$async_provider as Provider>::Function>>)),+
        }
       );
 
@@ -171,15 +170,15 @@ macro_rules! declare_provider_set {
         }
       }
 
-      pub async fn call_function(sender: &ProviderSender, f: OldFunction, response_tx: oneshot::Sender<ProviderFunctionResult>) -> anyhow::Result<()> {
+      pub async fn call_function(sender: &ProviderSender, f: ProviderFunction, response_tx: oneshot::Sender<ProviderFunctionResult>) -> anyhow::Result<()> {
         match (sender, f) {
           $(
-            (ProviderSender::$sync_provider(ref tx), OldFunction::SelfManaged(ProviderFunction::$sync_provider(_f))) => {
+            (ProviderSender::$sync_provider(ref tx), ProviderFunction::$sync_provider(_f)) => {
               tx.send(ProviderInputMsg::Function(_f, response_tx)).map_err(|err|err.into())
             },
           )+
           $(
-            (ProviderSender::$async_provider(ref tx), OldFunction::SelfManaged(ProviderFunction::$async_provider(_f))) => {
+            (ProviderSender::$async_provider(ref tx), ProviderFunction::$async_provider(_f)) => {
               tx.send(ProviderInputMsg::Function(_f, response_tx)).await.map_err(|err|err.into())
             },
           )+

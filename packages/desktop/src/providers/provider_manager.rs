@@ -385,17 +385,17 @@ impl ProviderManager {
       .context("No provider found with config.")?;
 
     let (tx, rx) = oneshot::channel();
-    match &provider_ref.input_tx {
-      ProviderSender::Async(ref input_tx) => input_tx
-        .send(ProviderInputMsg::Function(function, tx))
+    match (&provider_ref.input_tx, function) {
+      (ProviderSender::SelfManaged(ref sender), ProviderFunction::SelfManaged(f)) =>
+        call_function(sender, f, tx).await,
+      (ProviderSender::Async(ref input_tx), f) => input_tx
+        .send(ProviderInputMsg::Function(f, tx))
         .await
         .map_err(|err| err.into()),
-      ProviderSender::Sync(ref input_tx) => input_tx
-        .send(ProviderInputMsg::Function(function, tx))
+      (ProviderSender::Sync(ref input_tx), f) => input_tx
+        .send(ProviderInputMsg::Function(f, tx))
         .map_err(|err| err.into()),
-      ProviderSender::SelfManaged(ref sender) => {
-        call_function(sender, function, tx).await
-      }
+      _ => panic!("got wrong sender for the wrong function type"),
     }
     .context("Failed to send function call to provider.")?;
 
