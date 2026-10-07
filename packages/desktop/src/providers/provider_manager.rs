@@ -384,22 +384,26 @@ impl ProviderManager {
       .get(&config_hash)
       .context("No provider found with config.")?;
 
-    let (tx, rx) = oneshot::channel();
     match (&provider_ref.input_tx, function) {
       (ProviderSender::SelfManaged(ref sender), ProviderFunction::SelfManaged(f)) =>
-        call_function(sender, f, tx).await,
-      (ProviderSender::Async(ref input_tx), f) => input_tx
-        .send(ProviderInputMsg::Function(f, tx))
-        .await
-        .map_err(|err| err.into()),
-      (ProviderSender::Sync(ref input_tx), f) => input_tx
-        .send(ProviderInputMsg::Function(f, tx))
-        .map_err(|err| err.into()),
+        call_function(sender, f).await,
+      (_input_tx, f) => {
+        let (tx, rx) = oneshot::channel();
+        match &provider_ref.input_tx {
+          ProviderSender::Async(ref input_tx) => input_tx
+            .send(ProviderInputMsg::Function(f, tx))
+            .await
+            .map_err(anyhow::Error::from),
+          ProviderSender::Sync(ref input_tx) => input_tx
+            .send(ProviderInputMsg::Function(f, tx))
+            .map_err(anyhow::Error::from),
+          _ => panic!("got wrong sender for the wrong function type"),
+        }?;
+        rx.await?.map_err(anyhow::Error::msg)
+      },
       _ => panic!("got wrong sender for the wrong function type"),
     }
-    .context("Failed to send function call to provider.")?;
-
-    rx.await?.map_err(anyhow::Error::msg)
+    .context("Failed to send function call to provider.")
   }
 
   /// Destroys and cleans up the provider with the given config.
