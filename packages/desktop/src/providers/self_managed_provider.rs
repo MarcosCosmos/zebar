@@ -14,9 +14,9 @@ use crate::providers::{
 };
 
 pub trait Provider {
-  type Config;
+  type Config: 'static + Send;
   type Output;
-  type Function;
+  type Function: 'static + Send;
   type Response;
 }
 
@@ -61,9 +61,7 @@ fn spawn_sync<T>(
 ) -> anyhow::Result<ProviderRef>
 where
   T: SyncProvider,
-  ProviderSender: From<cb_mpsc::Sender<ProviderInputMsg<T::Function>>>,
-  T::Config: 'static + Send,
-  T::Function: 'static + Send,
+  ProviderSender: From<cb_mpsc::Sender<ProviderInputMsg<T::Function>>>
 {
   let (input_tx, input_rx) = cb_mpsc::bounded(1);
   let common = manager.create_common_state(config_hash.clone(), input_rx);
@@ -85,9 +83,7 @@ fn spawn_async<T>(
 ) -> anyhow::Result<ProviderRef>
 where
   T: AsyncProvider,
-  ProviderSender: From<tk_mpsc::Sender<ProviderInputMsg<T::Function>>>,
-  T::Config: 'static + Send,
-  T::Function: 'static + Send,
+  ProviderSender: From<tk_mpsc::Sender<ProviderInputMsg<T::Function>>>
 {
   let (input_tx, input_rx) = tk_mpsc::channel(1);
   let common = manager.create_common_state(config_hash.clone(), input_rx);
