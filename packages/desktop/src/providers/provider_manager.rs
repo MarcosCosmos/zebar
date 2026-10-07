@@ -23,7 +23,7 @@ use super::{
   ProviderConfig, ProviderFunction, ProviderFunctionResponse,
   ProviderFunctionResult, ProviderOutput, RuntimeType,
 };
-use crate::providers::self_managed_provider::{call_function, spawn_managed, stop, ProviderSender as SMProviderSender};
+use crate::providers::self_managed_provider::{call_function, spawn_managed, stop, ProviderSender as SMProviderSender, CommonProviderState as SMCommonProviderState};
 
 /// Common fields for a provider.
 pub struct CommonProviderState {
@@ -56,13 +56,13 @@ pub enum ProviderInputMsg {
 #[derive(Clone, Debug)]
 pub struct ProviderEmitter {
   /// Sender channel for outgoing provider emissions.
-  pub emit_tx: mpsc::UnboundedSender<ProviderEmission>,
+  emit_tx: mpsc::UnboundedSender<ProviderEmission>,
 
   /// Hash of the provider's config.
-  pub config_hash: String,
+  config_hash: String,
 
   /// Previous emission from the provider.
-  pub prev_emission: Option<ProviderEmission>,
+  prev_emission: Option<ProviderEmission>,
 }
 
 impl ProviderEmitter {
@@ -145,10 +145,10 @@ pub struct ProviderManager {
   emit_cache: Arc<Mutex<HashMap<String, ProviderEmission>>>,
 
   /// Sender channel for provider emissions.
-  pub emit_tx: mpsc::UnboundedSender<ProviderEmission>,
+  emit_tx: mpsc::UnboundedSender<ProviderEmission>,
 
   /// Shared `sysinfo` instance.
-  pub sysinfo: Arc<Mutex<sysinfo::System>>,
+  sysinfo: Arc<Mutex<sysinfo::System>>,
 }
 
 impl ProviderManager {
@@ -343,6 +343,18 @@ impl ProviderManager {
     };
 
     Ok((task_handle, runtime_type))
+  }
+
+  pub fn create_common_state<T>(&self, config_hash: String, input_rx: T) -> SMCommonProviderState<T> {
+    SMCommonProviderState {
+      input_rx,
+      emitter: ProviderEmitter {
+        emit_tx: self.emit_tx.clone(),
+        config_hash: config_hash.clone(),
+        prev_emission: None,
+      },
+      sysinfo: self.sysinfo.clone(),
+    }
   }
 
   /// Sends a function call through a channel to be executed by the
