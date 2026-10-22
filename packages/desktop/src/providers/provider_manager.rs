@@ -16,6 +16,15 @@ use super::{
   audio::AudioProvider, keyboard::KeyboardProvider, media::MediaProvider,
   systray::SystrayProvider,
 };
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use super::{audio::AudioProvider};
+
 use super::{
   battery::BatteryProvider, cpu::CpuProvider, disk::DiskProvider,
   host::HostProvider, ip::IpProvider, memory::MemoryProvider,
@@ -254,6 +263,14 @@ impl ProviderManager {
       ProviderConfig::Komorebi(..) => RuntimeType::Async,
       #[cfg(windows)]
       ProviderConfig::Systray(..) => RuntimeType::Async,
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      ))]
+      ProviderConfig::Audio(..) => RuntimeType::Async,
       _ => RuntimeType::Sync,
     };
 
@@ -277,6 +294,17 @@ impl ProviderManager {
           #[cfg(windows)]
           ProviderConfig::Systray(config) => {
             let mut provider = SystrayProvider::new(config, common);
+            provider.start_async().await;
+          }
+          #[cfg(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+          ))]
+          ProviderConfig::Audio(..) => {
+            let mut provider = AudioProvider::new(common);
             provider.start_async().await;
           }
           _ => unreachable!(),

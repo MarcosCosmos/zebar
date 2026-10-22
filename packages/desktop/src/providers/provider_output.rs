@@ -13,6 +13,15 @@ use super::{
   network::NetworkOutput, weather::WeatherOutput,
 };
 
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use super::audio::AudioOutput;
+
 /// Implements `From<T>` for `ProviderOutput` for each given variant.
 macro_rules! impl_provider_output {
   ($($variant:ident($type:ty)),* $(,)?) => {
@@ -29,7 +38,14 @@ macro_rules! impl_provider_output {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ProviderOutput {
-  #[cfg(windows)]
+  #[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
   Audio(AudioOutput),
   Battery(BatteryOutput),
   Cpu(CpuOutput),
@@ -72,4 +88,15 @@ impl_provider_output! {
   Keyboard(KeyboardOutput),
   Komorebi(KomorebiOutput),
   Systray(SystrayOutput),
+}
+
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+impl_provider_output! {
+  Audio(AudioOutput)
 }

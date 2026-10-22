@@ -14,10 +14,28 @@ use super::{
   network::NetworkProviderConfig, weather::WeatherProviderConfig,
 };
 
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use crate::providers::{
+  audio::AudioProviderConfig
+};
+
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderConfig {
-  #[cfg(windows)]
+  #[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
   Audio(AudioProviderConfig),
   Battery(BatteryProviderConfig),
   Cpu(CpuProviderConfig),

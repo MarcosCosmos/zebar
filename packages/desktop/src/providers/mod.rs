@@ -1,4 +1,14 @@
-#[cfg(windows)]
+#[cfg(any(
+  target_os = "windows",
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+use crate::providers::{
+  audio::AudioProviderConfig
+};
 mod audio;
 mod battery;
 mod cpu;
